@@ -97,7 +97,7 @@
 
 - **404 と 403 の分かれ目は「チャンネルを見られるか」の1点だけです。**だから判定の順番が決まります。**先に「チャンネルを見られるか」を見て、見られなければ 404。見られたうえで「作成者か／本人か」を見て、違えば 403**
 - **この順番は F-15・F-16（メッセージの編集・削除）でも同じです。**「書いた本人か」を先に見ると、外されたメンバーに 403 が返って、そのチャンネルの存在が漏れます（△3 の（1））
-- この順番を守るために、チャンネルの取得は**見られるものに絞った問い合わせ**で行い、見つからなければ 404 にします（ポリシーに任せると 403 になり、存在が漏れます）。詳しくは `behavior.md` 4章
+- この順番を守るために、チャンネルの取得は**見られるものに絞った問い合わせ**で行い、見つからなければ 404 にします（ポリシーに任せると 403 になり、存在が漏れます）。詳しくは `behavior.md` 3章
 
 ### 1-6. 線引きを守る場所
 
@@ -151,6 +151,7 @@ URLの形は仕様書・モックアップのどちらにも指定がありま�
 | DELETE | `/channels/{channel}/members/{user}` | `channels.members.destroy` | `ChannelMemberController@destroy` | `auth` | — | F-12 | E（△2） |
 | POST | `/channels/{channel}/messages` | `channels.messages.store` | `MessageController@store` | `auth` | — | F-14 | C |
 | GET | `/messages/{message}` | `messages.show` | `MessageController@show` | `auth` | SC-07 | F-18 | C |
+| GET | `/messages/{message}/edit` | `messages.edit` | `MessageController@edit` | `auth` | SC-06・SC-07 の中の状態 | F-15 | D（△3） |
 | PATCH | `/messages/{message}` | `messages.update` | `MessageController@update` | `auth` | — | F-15 | D（△3） |
 | DELETE | `/messages/{message}` | `messages.destroy` | `MessageController@destroy` | `auth` | — | F-16 | D（△3） |
 | POST | `/messages/{message}/replies` | `messages.replies.store` | `ReplyController@store` | `auth` | — | F-19 | C（△4） |
@@ -164,7 +165,7 @@ URLの形は仕様書・モックアップのどちらにも指定がありま�
 |:--|:--|:--|
 | `messages.show`（SC-07） | **`->withTrashed()`** | 削除されたメッセージのスレッドを開ける必要があります（`thread.html` が削除済みの親で開いた状態を描いています） |
 | `messages.replies.store`（F-19） | **`->withTrashed()`** | 削除されたメッセージにも返信を続けられます（回答6） |
-| `messages.update`・`messages.destroy` | **既定のまま**（削除済みを除外） | 削除済みは編集・再削除ができません（△3）。バインディングで落ちるので、404 になります |
+| `messages.edit`・`messages.update`・`messages.destroy` | **既定のまま**（削除済みを除外） | 削除済みは編集・再削除ができません（△3）。バインディングで落ちるので、404 になります |
 | `channels.*` | 既定のまま | チャンネルは論理削除を使いません（`data.md` 3-2） |
 
 - `{channel}` と `{user}` は `id` で引きます（スラグは持ちません・`data.md` 2-2）
@@ -188,7 +189,7 @@ GET にしたのは、検索結果のURLを人に送れて、ブラウザの履�
 | GET | `/api/channels` | `api.channels.index` | `Api\ChannelController@index` | F-21 | 全部 |
 | GET | `/api/channels/{channel}/messages` | `api.channels.messages.index` | `Api\ChannelMessageController@index` | F-22 | 全部（△5） |
 
-- 書き込み・変更のAPIは作りません（仕様書 3-7 / `features.md` 2-1）。GET 以外は **405** を返します（`behavior.md` 4章）
+- 書き込み・変更のAPIは作りません（仕様書 3-7 / `features.md` 2-1）。GET 以外は **405** を返します（`behavior.md` 3章）
 - `{channel}` は **公開チャンネルに絞って**取得します。プライベートチャンネルのIDは 404 です（△5）
 - 3本目（返信のAPI）は作りません。返信が要るかは **Q-31 で確認中**です
 
@@ -428,7 +429,7 @@ GET /api/channels/{channel}/messages
 
 - **404 の文言を揃えることが、このAPIで一番大事なところです。**「存在しません」と「プライベートなので返せません」を言い分けた瞬間に、仕様書 3-7 が破れます
 - 500 では**中身を出しません**（例外のクラス名・ファイル名・SQL・本文を含めない）。`APP_DEBUG=false` が前提です
-- Laravel の既定では、404 のときに `No query results for model [App\Models\Channel] 9` というモデルのクラス名入りの文が返ります。**そのままにしません**（差し替えは `behavior.md` 4章）
+- Laravel の既定では、404 のときに `No query results for model [App\Models\Channel] 9` というモデルのクラス名入りの文が返ります。**そのままにしません**（差し替えは `behavior.md` 3章）
 - 入力の検査で落ちる 422 は**起きません**。入力は `page` だけで、範囲の外なら空の `data` を返します
 
 ---
