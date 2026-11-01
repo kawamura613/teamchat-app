@@ -235,7 +235,9 @@ class AuthTest extends TestCase
     {
         $this->actingAs($this->既存の社員);
 
-        $this->get('/logout')->assertStatus(405);
+        $this->get('/logout')
+            ->assertStatus(405)
+            ->assertSee('このページはこの方法では開けません', false);
 
         $this->assertAuthenticatedAs($this->既存の社員);
     }
@@ -276,11 +278,12 @@ class AuthTest extends TestCase
 
     // エラー画面
 
-    public function test_エラー画面5枚の文言が決めたとおり(): void
+    public function test_エラー画面6枚の文言が決めたとおり(): void
     {
         foreach ([
             403 => 'この操作を行う権限がありません',
             404 => 'お探しのページは見つかりません',
+            405 => 'このページはこの方法では開けません',
             419 => '時間が経ちすぎたため送信できませんでした。ページを開き直してください',
             429 => '試行回数が多すぎます。しばらく待ってからやり直してください',
             500 => '申し訳ありません。サーバ側で問題が発生しました',
