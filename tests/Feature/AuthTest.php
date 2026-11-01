@@ -231,7 +231,7 @@ class AuthTest extends TestCase
         $this->get(route('channels.index'))->assertRedirect(route('login'));
     }
 
-    public function test_ログアウトは_pos_tだけで効く(): void
+    public function test_ログアウトは送信のときだけ効き直接開くと効かない(): void
     {
         $this->actingAs($this->既存の社員);
 
@@ -244,7 +244,17 @@ class AuthTest extends TestCase
 
     // 入れない・見えない
 
-    public function test_未ログインで画面の_ur_lを開くとログイン画面へ送られる(): void
+    public function test_ログインが要る画面にノーストアが付く(): void
+    {
+        $this->actingAs($this->既存の社員);
+
+        $response = $this->get(route('channels.index'));
+
+        // 付いていないと、ログアウトしたあとに戻るボタンで中身が履歴から出る（AC-1-4）
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('cache-control'));
+    }
+
+    public function test_未ログインで画面のアドレスを開くとログイン画面へ送られる(): void
     {
         $this->get(route('channels.index'))->assertRedirect(route('login'));
         $this->get('/')->assertRedirect(route('login'));
@@ -259,7 +269,7 @@ class AuthTest extends TestCase
         $this->get('/')->assertRedirect(route('channels.index'));
     }
 
-    public function test_外した機能の_ur_lはどれも404(): void
+    public function test_外した機能のアドレスはどれも404(): void
     {
         $this->actingAs($this->既存の社員);
 

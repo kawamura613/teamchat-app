@@ -21,6 +21,9 @@ Route::get('/', function () {
         : redirect()->route('login');
 })->name('home');
 
-Route::middleware('auth')->group(function () {
+// ログインが要る画面には no-store を付ける。付けないとログアウトしたあとに
+// ブラウザの戻るボタンで中身が履歴から出てしまう（acceptance.md AC-1-4）。
+// Laravel の既定は no-cache, private で、再検証なしの表示を止められない。
+Route::middleware(['auth', 'cache.headers:no_store;no_cache;must_revalidate;max_age=0'])->group(function () {
     Route::get('/channels', [ChannelController::class, 'index'])->name('channels.index');
 });

@@ -157,6 +157,10 @@ URLの形は仕様書・モックアップのどちらにも指定がありま�
 | POST | `/messages/{message}/replies` | `messages.replies.store` | `ReplyController@store` | `auth` | — | F-19 | C（△4） |
 | GET | `/search` | `search` | `SearchController@index` | `auth` | SC-08 | F-20 | B〜E |
 
+**ログインが要る画面には `no-store` も付けます**
+
+表の `auth` の行は、実際には `auth` ＋ `cache.headers:no_store;no_cache;must_revalidate;max_age=0` の 2 つを通します。Laravel の既定（`no-cache, private`）では、**ログアウトしたあとにブラウザの戻るボタンで中身が履歴から出てしまい**、`acceptance.md` の AC-1-4「中身は出ずログイン画面に送られる」を満たせません（2026-11-01 に実機で確認して追加）。`login`・`register` の画面（列A が開くもの）には付けません。CSRF トークンを載せているので、既定の再検証で足ります。
+
 **認証の5本は Fortify が登録します**
 
 `Fortify\` は `Laravel\Fortify\Http\Controllers\` の略です。この5本（`login`・`login.store`・`logout`・`register`・`register.store`）は **`routes/web.php` には書きません**。パッケージが同じURL・同じルート名・同じミドルウェアで登録するので、上の表はそのまま読めます（4-3 の #13）。画面（SC-01・SC-02）は `Fortify::loginView()` / `Fortify::registerView()` で自前の Blade を渡します。
