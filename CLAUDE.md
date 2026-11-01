@@ -44,6 +44,22 @@ Tutorial 16「総仕上げ」のチームチャットアプリ。素の Laravel 
 - `config/app.php` の `locale` は `en` で `lang/ja` も無いため、メッセージを指定していない項目は英語の既定文言になる。検証ルールを足すときは日本語メッセージも必ず付ける（文言は `docs/design/screens.md` が正）。
 - ビューが関連モデルを引くときは、コントローラーで `with()` / `load()` を付けて先読みする（N+1 を避ける）。
 
+## 守ってほしい書き方
+
+`docs/design/` の決めごとのうち、素直に書くと破れるもの。理由は括弧内の設計書にある。
+
+- **認可の順番**: `MessagePolicy` の判定（本人か・削除済みでないか）より先に、必ず `ChannelPolicy@view` を通す（`permissions-api.md` 1-6）。
+- **404 と 403**: 見られないものは 404、見られたうえでの不可は 403。この順で判定する（`permissions-api.md` 1-5）。
+- **チャンネルの絞り込み**: `Channel` の `visibleTo` スコープだけを通す。自前の `where` を書かない（`permissions-api.md` 1-6）。
+- **削除済みのメッセージ**: 画面は `withTrashed()` で引き、検索と公開 API には書かない。出し分けはメッセージ 1 件ぶんの Blade 部品に閉じる。`SoftDeletes` の `deleting` で本文を触らない（`questions.md` 決定1 / `behavior.md` 3-6）。
+- **返信件数**: 画面は削除済みの親・子を含めて数える（`withCount` の既定では落ちる）。公開 API は含めない（`behavior.md` 1-4）。
+- **公開 API**: 返す列を許可リストで持つ。モデルをそのまま JSON にしない（`permissions-api.md` 3-4）。
+- **入力の前処理**: 前後の空白と改行を取り除いてから検査し、上限もその後の字数で数え、保存もその値（`screens.md` 4-1）。
+- **DB で縛れない約束**: 返信は 1 段まで、返信の `channel_id` は親と同じ、チャンネル名の重複はその人が見られる範囲だけで見る（`data.md` 4-3）。
+- **まとめて書く・消す**: チャンネル作成と削除、初期データはトランザクションに入れる。チャンネルは物理削除（`behavior.md` 3-5）。
+- **JavaScript**: 1 枚・3 か所だけ（文字数・編集中の差し替え・一覧のスクロール）（`questions.md` 決定2 / `behavior.md` 4-1）。
+- **マイグレーション**: `users.name` は 30 字、作る順番は `channels` → `channel_user` → `messages`、`channel_user` はプライベートチャンネルだけ行を作る、タイムゾーンは `Asia/Tokyo`（`data.md` 2・5）。
+
 ## テスト
 
 - 機能のテストは `tests/Feature/` に置く。データベースを使うテストには `use RefreshDatabase;` を付ける。
