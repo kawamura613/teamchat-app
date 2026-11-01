@@ -161,6 +161,8 @@ URLの形は仕様書・モックアップのどちらにも指定がありま�
 
 `Fortify\` は `Laravel\Fortify\Http\Controllers\` の略です。この5本（`login`・`login.store`・`logout`・`register`・`register.store`）は **`routes/web.php` には書きません**。パッケージが同じURL・同じルート名・同じミドルウェアで登録するので、上の表はそのまま読めます（4-3 の #13）。画面（SC-01・SC-02）は `Fortify::loginView()` / `Fortify::registerView()` で自前の Blade を渡します。
 
+Fortify は **`features` と無関係に、パスワード確認の3本**（`password.confirm`・`password.confirm.store`・`password.confirmation`）も登録します。この画面は作らないので、`Fortify::confirmPasswordView()` で **404** を返します（1-5 の「作らないものは見つからない」に合わせる）。残る2本は何からも参照されず、叩いても害がないのでそのままにしています。
+
 **ルートモデルバインディング**
 
 `messages` は `SoftDeletes` を使うので、**既定では削除済みの行が解決されません**。ルートごとに分けます。

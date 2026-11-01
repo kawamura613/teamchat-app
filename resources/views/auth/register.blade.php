@@ -16,7 +16,7 @@
                 @else
                     <span class="help">メッセージに表示される名前です。</span>
                 @enderror
-                <span class="count" data-count-for="name" data-count-max="30">0 / 30</span>
+                <span class="count" data-count-for="name" data-count-max="30">{{ mb_strlen(old('name', '')) }} / 30</span>
             </div>
         </div>
         <div class="field @error('email') is-error @enderror">

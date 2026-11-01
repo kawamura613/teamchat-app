@@ -3,7 +3,7 @@
 - 対象: チームチャットアプリ
 - 典拠: `docs/spec.md`、`mockup/`（画面見本10枚・`design-guide.md`）、`docs/design/features.md`・`questions.md`・`screens.md`・`data.md`・`permissions-api.md`
 - この文書は「**動いているときに何が起きるか**」だけを書きます。画面の中身は `screens.md`、データの持ち方は `data.md`、URLと権限は `permissions-api.md` に分けます
-- 動かす環境: Laravel 10.10（`composer.json`）・MySQL 8.4（Laravel Sail）
+- 動かす環境: Laravel 10（`composer.json`）・PHP 8.3・MySQL 8.4（Laravel Sail）。`compose.yaml` の既定は PHP 8.5 でしたが、Laravel 10 標準の `config/database.php` が 8.5 で非推奨通知を出すため 8.3 に下げました（2026-11-01）
 - **クラス図は作りません。Laravel の MVC の標準の作り（ルーティング → コントローラ／ポリシー → Eloquent モデル → Blade ビュー）に、そのまま乗せます。**認証（F-01〜F-03）だけは Laravel Fortify のコントローラとアクションクラスに乗せ、画面は自前の Blade を渡します（`permissions-api.md` 2-2・4-3 の #13）
 
 ---
@@ -333,7 +333,7 @@ sequenceDiagram
 
 | ミドルウェア | 効くところ |
 |:--|:--|
-| `TrimStrings`（全体） | 送られてきた値の**前後の空白と改行を取り除きます**。`screens.md` 4-1 の「前後だけ取り除く・途中の改行は残す」がそのまま満たせます |
+| `TrimStrings`（全体） | 送られてきた値の**前後の空白と改行を取り除きます**。`screens.md` 4-1 の「前後だけ取り除く・途中の改行は残す」がそのまま満たせます。ただし Laravel 既定の `\s` は**全角スペース（U+3000）に当たらない**ので、`app/Http/Middleware/TrimStrings.php` の `transform()` を上書きして全角スペースも取り除きます（日本語入力で前後に入りやすく、「空白だけの送信」が通ってしまうため）。パスワードは `$except` のまま取り除きません |
 | `ConvertEmptyStringsToNull`（全体） | 取り除いた結果が空なら `null` になるので、`required` でそのまま弾けます（空白だけ・改行だけの送信が通りません） |
 | `VerifyCsrfToken`（web） | 画面側の POST・PATCH・DELETE を守ります。419 の出どころ |
 | `ThrottleRequests:api`（api） | 公開APIの 60回／分。429 の出どころ |
@@ -378,7 +378,7 @@ sequenceDiagram
 - メッセージ1件の削除の確認は、**画面（SC番号・URL）を増やさず**、上の4つめで済ませます（**決定11・仮**。Q-39 は回答待ちです）。自前のモーダルは作りません。画面を挟むことになったら、4-2 と同じ形（URLを持つ確認）で作ります
 - **4番だけは、無効なときに安全網が外れます。**ほかの3つ（文字数・編集中・スクロール）は、無効でも同じことが別の道でできます
 - スタイルシートも同じ形です。`mockup/styles.css` を `public/css/app.css` に1枚置きます（ビルドなし・Webフォントなし）
-- **モックアップに部品が無いものだけ、`app.css` の末尾に追記します。**いまのところ2つで、どちらも `design-guide.md` 1 の変数だけで作ります: 操作が済んだ知らせの帯（4-6 の藍系の薄地）と、POST で送るログアウトのボタンをリンクの見た目にする分（`permissions-api.md` 4-1 の #7）。追記はファイルの末尾に1か所まとめ、モックアップから写した部分と混ぜません
+- **モックアップに部品が無いものだけ、`app.css` の末尾に追記します。**いまのところ3つです: （1）操作が済んだ知らせの帯（4-6 の藍系の薄地・`design-guide.md` 1 の変数だけで作る）、（2）POST で送るログアウトのボタンをリンクの見た目にする分（`permissions-api.md` 4-1 の #7。隣の `.topbar__me a` と同じ値に揃えるので、モックアップがそこで直書きしている色をそのまま使います）、（3）上部バーのアプリ名をリンクにしたぶんのホバーの打ち消し（`screens.md` 2-3。素の `a:hover` が藍色＋下線にしてしまい、暗い地の上で読めなくなる）。追記はファイルの末尾に1か所まとめ、モックアップから写した部分と混ぜません
 
 ### 4-2. 編集中に入る道（決定3）
 

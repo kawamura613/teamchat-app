@@ -53,6 +53,8 @@ class AuthTest extends TestCase
             $response = $this->post(route('register.store'), $this->登録の入力([$欄 => '']));
 
             $response->assertSessionHasErrors([$欄 => $文言]);
+            // ほかの欄を巻き込まないこと（「その欄の下にだけ」）
+            $this->assertSame([$欄], array_keys(session('errors')->getBag('default')->messages()));
             $this->assertGuest();
         }
     }
@@ -84,11 +86,13 @@ class AuthTest extends TestCase
         $this->assertAuthenticated();
     }
 
-    public function test_パスワードと確認用が一致しないと弾かれる(): void
+    public function test_パスワードと確認用が一致しないと確認用の欄に出る(): void
     {
         $this->post(route('register.store'), $this->登録の入力(['password_confirmation' => 'chigaumono']))
-            ->assertSessionHasErrors(['password' => 'パスワードが一致しません']);
+            ->assertSessionHasErrors(['password_confirmation' => 'パスワードが一致しません']);
 
+        // パスワード側は赤くしない（screens.md 4-3 はこの文言を確認用の行に置いている）
+        $this->assertFalse(session('errors')->has('password'));
         $this->assertGuest();
     }
 
@@ -139,6 +143,21 @@ class AuthTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_全角スペースだけを送っても必須エラーになる(): void
+    {
+        $this->post(route('register.store'), $this->登録の入力(['name' => '　　']))
+            ->assertSessionHasErrors(['name' => '表示名を入力してください']);
+
+        $this->assertGuest();
+    }
+
+    public function test_表示名の前後の全角スペースは取り除いて保存する(): void
+    {
+        $this->post(route('register.store'), $this->登録の入力(['name' => '　鈴木　花子　']));
+
+        $this->assertSame('鈴木　花子', User::where('email', 'suzuki@example.com')->sole()->name);
+    }
+
     public function test_パスワードがハッシュで保存され平文が残らない(): void
     {
         $this->post(route('register.store'), $this->登録の入力(['password' => 'himitsunopassword', 'password_confirmation' => 'himitsunopassword']));
@@ -162,6 +181,17 @@ class AuthTest extends TestCase
         $this->assertAuthenticatedAs($this->既存の社員);
     }
 
+    public function test_ログインの必須のエラー文が日本語で出る(): void
+    {
+        $this->post(route('login.store'), ['email' => '', 'password' => ''])
+            ->assertSessionHasErrors([
+                'email' => 'メールアドレスを入力してください',
+                'password' => 'パスワードを入力してください',
+            ]);
+
+        $this->assertGuest();
+    }
+
     public function test_パスワードが違うとパスワード欄に1文だけ出てログインできない(): void
     {
         $response = $this->post(route('login.store'), [
@@ -174,6 +204,19 @@ class AuthTest extends TestCase
         $this->assertCount(1, session('errors')->all());
         $this->assertFalse(session('errors')->has('email'));
         $this->assertGuest();
+    }
+
+    public function test_ログインの試行が多すぎると429の画面になる(): void
+    {
+        $入力 = ['email' => 'sato@example.com', 'password' => 'chigaupassword'];
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->post(route('login.store'), $入力);
+        }
+
+        $this->post(route('login.store'), $入力)
+            ->assertStatus(429)
+            ->assertSee('試行回数が多すぎます。しばらく待ってからやり直してください', false);
     }
 
     // ログアウトする

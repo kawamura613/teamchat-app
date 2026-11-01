@@ -2,15 +2,14 @@
 
 namespace App\Providers;
 
+use App\Actions\Fortify\AttemptToAuthenticate;
 use App\Actions\Fortify\CreateNewUser;
-use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
+use Laravel\Fortify\Actions\AttemptToAuthenticate as FortifyAttemptToAuthenticate;
 use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
@@ -20,7 +19,9 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // ログイン失敗の文言をパスワード欄に出すため、照合の一歩だけ差し替える
+        // （screens.md 4-2）。Fortify のパイプラインはクラス名をコンテナで解決する。
+        $this->app->bind(FortifyAttemptToAuthenticate::class, AttemptToAuthenticate::class);
     }
 
     /**
@@ -38,23 +39,11 @@ class FortifyServiceProvider extends ServiceProvider
         // この画面は作らないので 404 にする（features.md 2-3 / permissions-api.md 1-5）。
         Fortify::confirmPasswordView(fn () => abort(404));
 
-        // Fortify の既定はメールアドレス欄に auth.failed を出すため、ここで投げ替える。
-        // screens.md 4-2「パスワード欄の下に1文だけ・どちらが違うかは明かさない」。
-        Fortify::authenticateUsing(function (Request $request) {
-            $user = User::where('email', $request->input(Fortify::username()))->first();
-
-            if ($user && Hash::check($request->input('password'), $user->password)) {
-                return $user;
-            }
-
-            throw ValidationException::withMessages([
-                'password' => 'メールアドレスまたはパスワードが正しくありません',
-            ]);
-        });
-
         // behavior.md 3-2 の 429（ログインの試行が多すぎる）の出どころ。
         RateLimiter::for('login', function (Request $request) {
-            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
+            // 空で送られると null が来るので文字列に寄せる（PHP の非推奨を踏まない）。
+            $username = (string) $request->input(Fortify::username());
+            $throttleKey = Str::transliterate(Str::lower($username).'|'.$request->ip());
 
             return Limit::perMinute(5)->by($throttleKey);
         });

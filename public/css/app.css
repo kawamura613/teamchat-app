@@ -358,4 +358,8 @@ mark{background:#FBEBBD;color:inherit;border-radius:2px;padding:0 1px}
    見た目は隣の .topbar__me a に合わせる */
 .topbar__me form{display:flex}
 .topbar__me button{padding:0;border:0;background:none;color:#A9B3BF;font:inherit;font-size:var(--fs-label);cursor:pointer}
-.topbar__me button:hover{color:#fff;text-decoration:underline}
+.topbar__me button:hover{color:#fff}
+
+/* 上部バーのアプリ名はチャンネル一覧へのリンク（screens.md 2-3）。
+   素の a:hover が藍色＋下線にしてしまい、暗い地の上で読めなくなるので打ち消す */
+.topbar__brand:hover{color:var(--side-text-strong);text-decoration:none}
