@@ -1,19 +1,11 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
-
 /*
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
 |
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group. Make something great!
+| 公開API（F-21・F-22）は単位7 で作ります。ログインも鍵も要りません（仕様書 3-7）。
+| 初期状態の GET /user は削除しました（personal_access_tokens を使わないため・data.md 2-6）。
 |
 */
-
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
-});

@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\ChannelController;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -7,12 +9,18 @@ use Illuminate\Support\Facades\Route;
 | Web Routes
 |--------------------------------------------------------------------------
 |
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "web" middleware group. Make something great!
+| URLとルート名は permissions-api.md 2-2 の表が正です。
+| 認証の5本（login・login.store・logout・register・register.store）は
+| Fortify が登録するので、ここには書きません。
 |
 */
 
 Route::get('/', function () {
-    return view('welcome');
+    return Auth::check()
+        ? redirect()->route('channels.index')
+        : redirect()->route('login');
+})->name('home');
+
+Route::middleware('auth')->group(function () {
+    Route::get('/channels', [ChannelController::class, 'index'])->name('channels.index');
 });
