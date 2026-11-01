@@ -133,11 +133,11 @@ URLの形は仕様書・モックアップのどちらにも指定がありま�
 | メソッド | URL | ルート名 | コントローラ#アクション | ミドルウェア | 画面 | F番号 | 通れる列 |
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | GET | `/` | `home` | （`/channels` か `/login` へリダイレクト） | — | — | — | 全部 |
-| GET | `/login` | `login` | `Auth\SessionController@create` | `guest` | SC-01 | F-02 | A |
-| POST | `/login` | `login.store` | `Auth\SessionController@store` | `guest` | — | F-02 | A |
-| POST | `/logout` | `logout` | `Auth\SessionController@destroy` | `auth` | — | F-03 | B〜E |
-| GET | `/register` | `register` | `Auth\RegisterController@create` | `guest` | SC-02 | F-01 | A |
-| POST | `/register` | `register.store` | `Auth\RegisterController@store` | `guest` | — | F-01 | A |
+| GET | `/login` | `login` | `Fortify\AuthenticatedSessionController@create` | `guest` | SC-01 | F-02 | A |
+| POST | `/login` | `login.store` | `Fortify\AuthenticatedSessionController@store` | `guest` | — | F-02 | A |
+| POST | `/logout` | `logout` | `Fortify\AuthenticatedSessionController@destroy` | `auth` | — | F-03 | B〜E |
+| GET | `/register` | `register` | `Fortify\RegisteredUserController@create` | `guest` | SC-02 | F-01 | A |
+| POST | `/register` | `register.store` | `Fortify\RegisteredUserController@store` | `guest` | — | F-01 | A |
 | GET | `/channels` | `channels.index` | `ChannelController@index` | `auth` | SC-03 | F-06 | B〜E |
 | GET | `/channels/create` | `channels.create` | `ChannelController@create` | `auth` | SC-04 | F-07 | B〜E |
 | POST | `/channels` | `channels.store` | `ChannelController@store` | `auth` | — | F-07 | B〜E |
@@ -156,6 +156,10 @@ URLの形は仕様書・モックアップのどちらにも指定がありま�
 | DELETE | `/messages/{message}` | `messages.destroy` | `MessageController@destroy` | `auth` | — | F-16 | D（△3） |
 | POST | `/messages/{message}/replies` | `messages.replies.store` | `ReplyController@store` | `auth` | — | F-19 | C（△4） |
 | GET | `/search` | `search` | `SearchController@index` | `auth` | SC-08 | F-20 | B〜E |
+
+**認証の5本は Fortify が登録します**
+
+`Fortify\` は `Laravel\Fortify\Http\Controllers\` の略です。この5本（`login`・`login.store`・`logout`・`register`・`register.store`）は **`routes/web.php` には書きません**。パッケージが同じURL・同じルート名・同じミドルウェアで登録するので、上の表はそのまま読めます（4-3 の #13）。画面（SC-01・SC-02）は `Fortify::loginView()` / `Fortify::registerView()` で自前の Blade を渡します。
 
 **ルートモデルバインディング**
 
@@ -195,7 +199,7 @@ GET にしたのは、検索結果のURLを人に送れて、ブラウザの履�
 
 ### 2-4. Laravel の初期状態から差し替えるところ
 
-いまのリポジトリに入っている初期状態と食い違う4か所です。実装の最初に直します。
+いまのリポジトリに入っている初期状態と食い違うところです。実装の最初に直します。
 
 | 場所 | いまの状態 | どうするか | 理由 |
 |:--|:--|:--|:--|
@@ -203,6 +207,10 @@ GET にしたのは、検索結果のURLを人に送れて、ブラウザの履�
 | `routes/api.php` | `GET /user` が `auth:sanctum` で入っている | **削除する** | `personal_access_tokens` を使わないと決めています（`data.md` 2-6）。公開APIは鍵も要りません（仕様書 3-7） |
 | `app/Providers/RouteServiceProvider.php` | `public const HOME = '/home'` | `'/channels'` に変える | `/home` のルートを作らないため。ログイン後の行き先は SC-03（Q-33 の想定） |
 | `config/app.php` | `'timezone' => 'UTC'` | `'Asia/Tokyo'` に変える | 日時はすべて日本時間で出します（Q-37 の想定 / `data.md` 5） |
+| `config/app.php` | `providers` に Fortify がいない | `App\Providers\FortifyServiceProvider::class` を足す | Laravel 10 は `bootstrap/providers.php` を持たないため（4-3 の #13） |
+| `config/fortify.php` | `features` に5つ入っている（メールアドレスの確認はコメントのまま） | `Features::registration()` **だけ**に減らす | 残りはどれも作らない機能です（`features.md` 2-3 / 回答12・回答13） |
+| `config/fortify.php` | `'home' => '/home'` | `RouteServiceProvider::HOME` と同じ値にし、`redirects` に `logout` の行き先（SC-01）を置く | Fortify の `logout` の既定は `/` です。遷移図は `screens.md` 2-1・2-3 |
+| `database/migrations/` | Fortify の2要素認証の列を足すマイグレーションが付いてくる | **publish しない**（`fortify-config` と `fortify-support` のタグだけ publish する） | `users` の列は `data.md` 2-1 が正。2要素認証は作りません |
 
 ---
 
@@ -464,7 +472,7 @@ GET /api/channels/{channel}/messages
 |:--|:--|:--|:--|
 | 11 | **公開APIを呼べる相手（CORS）**。`config/cors.php` は `'paths' => ['api/*']`・`'allowed_origins' => ['*']` で、**どのサイトのブラウザからでも呼べる**状態です | 初期設定のまま | 社内ポータルが**サーバ側から**呼ぶなら、`allowed_origins` を空にできます。**ブラウザから**呼ぶなら、ポータルのURLだけに絞ります。どちらですか |
 | 12 | **回数制限**。60回／分（IPごと）が初期設定で入っています | そのまま | ポータルが一覧を定期的に取りに来る使い方なら足ります。足りなければ数を上げます |
-| 13 | **ログインの作り方**。仕様書 3-1 は「よく使われているやり方で構いません」 | **Laravel Breeze などの足場は入れず、`Auth` ファサードを使った最小の実装**にします（2-2 の `Auth\*Controller` 2本） | Breeze を入れるとプロフィール編集とパスワード再設定のルートと画面が付いてきますが、どちらも作らないと決めています（回答13 / `features.md` 2-3）。消す手間のほうが大きいと判断しました |
+| 13 | **ログインの作り方**。仕様書 3-1 は「よく使われているやり方で構いません」 | **Laravel Fortify を入れ、画面は自前の Blade で作ります**（2026-11-01 に変更）。`config/fortify.php` の `features` は `Features::registration()` だけ残し、パスワード再設定・プロフィール編集・パスワード変更・2要素認証・メールアドレスの確認は**外します**（`features.md` 2-3 / 回答12・回答13） | Fortify は**ルートと処理だけを持ち、画面を持たないパッケージ**です。セッションの作り直し・ログアウト・登録してそのままログインといった定型を任せたうえで、画面と文言（`screens.md` 3-2・4-2・4-3）はこちらが持てます。Breeze を避けた理由（要らない画面が付いてくる）は、`features` から外すことで解消します。覆して自前実装に戻すなら、2-2 のコントローラ欄を `Auth\*Controller` 2本に戻し、`FortifyServiceProvider` と `app/Actions/Fortify/` を外します |
 
 ---
 
