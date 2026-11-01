@@ -25,7 +25,8 @@ class UserFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => fake()->name(),
+            // users.name は30字（data.md 2-1）。name() はまれに超えるので姓名を組む
+            'name' => fake()->lastName().' '.fake()->firstName(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),

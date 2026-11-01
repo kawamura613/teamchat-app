@@ -40,8 +40,12 @@ Tutorial 16「総仕上げ」のチームチャットアプリ。素の Laravel 
 
 ## 実装の決まり
 
-- 利用者に見せるメッセージは日本語。`validate()` の第 2 引数でフィールドごとに指定する（例: `'name.required' => '表示名を入力してください。'`）。
-- `config/app.php` の `locale` は `en` で `lang/ja` も無いため、メッセージを指定していない項目は英語の既定文言になる。検証ルールを足すときは日本語メッセージも必ず付ける（文言は `docs/design/screens.md` が正）。
+- 利用者に見せるメッセージは日本語。**検査を書くそばでフィールドごとに指定する**（`lang/ja` は作らない）。置き場は画面によって 3 つに分かれる（`behavior.md` 3-8 の表が正）。
+    - 自前のコントローラー（SC-04 以降）: `validate()` の**第 2 引数**（例: `'name.required' => 'チャンネル名を入力してください'`）
+    - SC-02 新規登録: `app/Actions/Fortify/CreateNewUser.php` の `Validator::make()` の**第 3 引数**（Fortify の登録はこのアクションクラスの中で検査する）
+    - SC-01 ログイン: `app/Http/Requests/LoginRequest.php` の `messages()`（Fortify の `LoginRequest` に `messages()` が無いため、継承して container で差し替えている）
+- ログイン失敗の「メールアドレスまたはパスワードが正しくありません」だけは別口。`app/Actions/Fortify/AttemptToAuthenticate.php` で**パスワード欄に**投げる（Fortify の既定はメールアドレス欄に英語で出す）。
+- `config/app.php` の `locale` は `en` で `lang/ja` も無いため、メッセージを指定していない項目は英語の既定文言になる。検証ルールを足すときは日本語メッセージも必ず付ける（**文言は `docs/design/screens.md` 4 章が正。エラー文は句点なしの 1 文**）。
 - ビューが関連モデルを引くときは、コントローラーで `with()` / `load()` を付けて先読みする（N+1 を避ける）。
 
 ## 守ってほしい書き方

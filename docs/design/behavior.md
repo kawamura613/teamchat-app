@@ -3,8 +3,8 @@
 - 対象: チームチャットアプリ
 - 典拠: `docs/spec.md`、`mockup/`（画面見本10枚・`design-guide.md`）、`docs/design/features.md`・`questions.md`・`screens.md`・`data.md`・`permissions-api.md`
 - この文書は「**動いているときに何が起きるか**」だけを書きます。画面の中身は `screens.md`、データの持ち方は `data.md`、URLと権限は `permissions-api.md` に分けます
-- 動かす環境: Laravel 10.10（`composer.json`）・MySQL 8.4（Laravel Sail）
-- **クラス図は作りません。Laravel の MVC の標準の作り（ルーティング → コントローラ → フォームリクエスト／ポリシー → Eloquent モデル → Blade ビュー）に、そのまま乗せます。**
+- 動かす環境: Laravel 10（`composer.json`）・PHP 8.3・MySQL 8.4（Laravel Sail）。`compose.yaml` の既定は PHP 8.5 でしたが、Laravel 10 標準の `config/database.php` が 8.5 で非推奨通知を出すため 8.3 に下げました（2026-11-01）
+- **クラス図は作りません。Laravel の MVC の標準の作り（ルーティング → コントローラ／ポリシー → Eloquent モデル → Blade ビュー）に、そのまま乗せます。**認証（F-01〜F-03）だけは Laravel Fortify のコントローラとアクションクラスに乗せ、画面は自前の Blade を渡します（`permissions-api.md` 2-2・4-3 の #13）
 
 ---
 
@@ -221,8 +221,10 @@ sequenceDiagram
 | 見えるが操作できない（他人のチャンネル・他人のメッセージ） | `AuthorizationException` | **403** | — | 仕様書 3-2 / 3-4 |
 | プライベートチャンネルのIDでAPIを叩いた | `ModelNotFoundException` | — | **404**（「ない」と同じ文言） | **仕様書 3-7 / 回答1** |
 | 書き込み系のAPIを叩いた | `MethodNotAllowedHttpException` | — | **405** | 仕様書 3-7 |
+| **そのURLにそのメソッドが無い**（`GET /logout` を直打ちしたときなど） | `MethodNotAllowedHttpException` | **405** | — | ルート定義（`permissions-api.md` 2-2）。画面を置かないと Laravel 既定の英語のページが出てしまう |
 | CSRFトークンが切れた | `TokenMismatchException` | **419** | 起きません（GETのみ） | — |
-| 回数制限を超えた | `ThrottleRequestsException` | — | **429** | `RouteServiceProvider` |
+| 回数制限を超えた（公開API） | `ThrottleRequestsException` | — | **429** | `RouteServiceProvider` |
+| **ログインの試行が多すぎる** | `ThrottleRequestsException` | **429** | — | Fortify の `limiters.login`（5回／分・メールアドレスとIPの組ごと）。`permissions-api.md` 4-3 の #13 |
 | そのURLがない | `NotFoundHttpException` | **404** | **404** | — |
 | それ以外の不具合 | `Throwable` | **500** | **500** | — |
 
@@ -236,10 +238,13 @@ sequenceDiagram
 | 302（入力チェック） | 元の画面に戻し、**その入力欄の下**に1文（句点なし）。欄の枠と地を赤に | `screens.md` 4章の表のとおり |
 | 403 | エラー画面1枚 | 「この操作を行う権限がありません」 |
 | 404 | エラー画面1枚 | 「お探しのページは見つかりません」 |
+| 405 | エラー画面1枚 | 「このページはこの方法では開けません」 |
 | 419 | エラー画面1枚 | 「時間が経ちすぎたため送信できませんでした。ページを開き直してください」 |
+| 429 | エラー画面1枚 | 「試行回数が多すぎます。しばらく待ってからやり直してください」 |
 | 500 | エラー画面1枚 | 「申し訳ありません。サーバ側で問題が発生しました」 |
 
-- エラー画面は `resources/views/errors/{403,404,419,500}.blade.php` に置きます（Laravel がステータスごとに自動で選びます）
+- エラー画面は `resources/views/errors/{403,404,405,419,429,500}.blade.php` に置きます（Laravel がステータスごとに自動で選びます）
+- **405 と 429 の文言はモックアップにも仕様書にも根拠がありません。**403・404 と同じ型（事実を1文＋次の一手）から作りました（`screens.md` 6-1 と同じ扱い）
 - **見た目は `design-guide.md` の空状態の型**に合わせます（破線の枠・中央揃え・見出しに事実・その下に次の一手）。モックアップにエラー画面の見本がないため、**いちばん近い型を借りました**（→ 5章）
 - 次の一手として「チャンネル一覧へ戻る」のリンクを置きます。ログインしていなければ「ログイン」へ
 - **403 と 404 で、言葉の強さを揃えません。**404 では「ない」と言い切ります（存在を隠すため・`permissions-api.md` 1-5）
@@ -313,14 +318,24 @@ sequenceDiagram
 |:--|:--|:--|:--|
 | `app/Exceptions/Handler.php` | `register()` の中が空 | 3-4 の整形を登録する | 既定の文言がモデルのクラス名を漏らします |
 | `config/app.php` | `'timezone' => 'UTC'` | `'Asia/Tokyo'` | 日時はすべて日本時間（Q-37 の想定 / `data.md` 5） |
-| `config/app.php` | `'locale' => 'en'` | **そのまま** | エラー文はモックアップで文言が決まっているので、`lang/ja` の自動生成に任せず、**フォームリクエストの `messages()` で1つずつ固定**します（`screens.md` 4章の文言どおりにするため） |
+| `config/app.php` | `'locale' => 'en'` | **そのまま** | エラー文はモックアップで文言が決まっているので、`lang/ja` の自動生成に任せず、**検査を書くそばで1つずつ固定**します（`screens.md` 4章の文言どおりにするため）。置き場は下の表のとおりです |
 | `routes/web.php`・`routes/api.php`・`RouteServiceProvider` | 初期状態のまま | `permissions-api.md` 2-4 のとおり差し替え | — |
+
+**日本語のエラー文をどこに書くか**
+
+| 画面 | 書く場所 | なぜそこか |
+|:--|:--|:--|
+| SC-02 新規登録（`screens.md` 4-3） | `app/Actions/Fortify/CreateNewUser.php` の `Validator::make()` の**第3引数** | Fortify の登録はこのアクションクラスの中で検査します |
+| SC-04・SC-05・SC-06・SC-07・SC-09・SC-10（`screens.md` 4-4〜4-8） | コントローラの `validate()` の**第2引数** | 自前のコントローラなので、呼び出しのそばに置けます |
+| SC-01 ログイン（`screens.md` 4-2） | Fortify の `LoginRequest` を継承した `app/Http/Requests/LoginRequest.php` の `messages()`（container で差し替え） | Fortify の `LoginRequest` に `messages()` が無く、ここだけフォームリクエストになります |
+
+- **ログインの「メールアドレスまたはパスワードが正しくありません」は別口です。**Fortify の既定はメールアドレス欄に出すので、`Fortify::authenticateUsing()` の中で**パスワード欄に投げ替えます**（`screens.md` 4-2 の「パスワード欄の下に1文だけ・どちらが違うかは明かさない」）
 
 **使う初期ミドルウェアと、それが効くところ**
 
 | ミドルウェア | 効くところ |
 |:--|:--|
-| `TrimStrings`（全体） | 送られてきた値の**前後の空白と改行を取り除きます**。`screens.md` 4-1 の「前後だけ取り除く・途中の改行は残す」がそのまま満たせます |
+| `TrimStrings`（全体） | 送られてきた値の**前後の空白と改行を取り除きます**。`screens.md` 4-1 の「前後だけ取り除く・途中の改行は残す」がそのまま満たせます。ただし Laravel 既定の `\s` は**全角スペース（U+3000）に当たらない**ので、`app/Http/Middleware/TrimStrings.php` の `transform()` を上書きして全角スペースも取り除きます（日本語入力で前後に入りやすく、「空白だけの送信」が通ってしまうため）。パスワードは `$except` のまま取り除きません |
 | `ConvertEmptyStringsToNull`（全体） | 取り除いた結果が空なら `null` になるので、`required` でそのまま弾けます（空白だけ・改行だけの送信が通りません） |
 | `VerifyCsrfToken`（web） | 画面側の POST・PATCH・DELETE を守ります。419 の出どころ |
 | `ThrottleRequests:api`（api） | 公開APIの 60回／分。429 の出どころ |
@@ -365,6 +380,7 @@ sequenceDiagram
 - メッセージ1件の削除の確認は、**画面（SC番号・URL）を増やさず**、上の4つめで済ませます（**決定11・仮**。Q-39 は回答待ちです）。自前のモーダルは作りません。画面を挟むことになったら、4-2 と同じ形（URLを持つ確認）で作ります
 - **4番だけは、無効なときに安全網が外れます。**ほかの3つ（文字数・編集中・スクロール）は、無効でも同じことが別の道でできます
 - スタイルシートも同じ形です。`mockup/styles.css` を `public/css/app.css` に1枚置きます（ビルドなし・Webフォントなし）
+- **モックアップに部品が無いものだけ、`app.css` の末尾に追記します。**いまのところ3つです: （1）操作が済んだ知らせの帯（4-6 の藍系の薄地・`design-guide.md` 1 の変数だけで作る）、（2）POST で送るログアウトのボタンをリンクの見た目にする分（`permissions-api.md` 4-1 の #7。隣の `.topbar__me a` と同じ値に揃えるので、モックアップがそこで直書きしている色をそのまま使います）、（3）上部バーのアプリ名をリンクにしたぶんのホバーの打ち消し（`screens.md` 2-3。素の `a:hover` が藍色＋下線にしてしまい、暗い地の上で読めなくなる）。追記はファイルの末尾に1か所まとめ、モックアップから写した部分と混ぜません
 
 ### 4-2. 編集中に入る道（決定3）
 
