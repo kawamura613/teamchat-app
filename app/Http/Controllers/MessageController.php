@@ -18,9 +18,8 @@ class MessageController extends Controller
      */
     public function store(Request $request, int $channel): RedirectResponse
     {
-        // 見られないチャンネルへの投稿はここで 404。ポリシーに任せると 403 が
-        // 返り、そこに部屋があることが漏れる（permissions-api.md 1-5）
-        $channel = Channel::visibleTo($request->user())->findOrFail($channel);
+        // 見られないチャンネルへの投稿はここで 404（permissions-api.md 1-5）
+        $channel = $this->visibleChannel($request, $channel);
 
         // 落ちたときは元の画面（SC-06）へ戻り、投稿欄の下にエラー文が出る
         $validated = $request->validate($this->rules(), $this->messages());

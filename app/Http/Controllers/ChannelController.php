@@ -168,18 +168,6 @@ class ChannelController extends Controller
     }
 
     /**
-     * URL の {channel} は、必ず「見られるチャンネル」に絞って取る。
-     *
-     * 見られないものはここで 404 になる。ポリシーに任せると 403 が返り、
-     * 「そこに部屋がある」ことが漏れる（permissions-api.md 1-5・1-6）。
-     * 作成者かどうかは、これを通したあとに authorize で見る。
-     */
-    private function visibleChannel(Request $request, int $id): Channel
-    {
-        return Channel::visibleTo($request->user())->findOrFail($id);
-    }
-
-    /**
      * SC-04・SC-05 の入力チェック（screens.md 4-4）。文言は同じ表から写す。
      *
      * $current を渡すと編集。公開範囲は SC-04 だけで見る。

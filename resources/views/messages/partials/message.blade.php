@@ -30,7 +30,7 @@
             </form>
         @endif
     </div>
-    @include('messages.partials.avatar', ['user' => $message->user])
+    @include('partials.avatar', ['user' => $message->user])
     <div>
         <div class="msg__head">
             {{-- 投稿者名と日時は跡地にも残す（behavior.md 1-2） --}}

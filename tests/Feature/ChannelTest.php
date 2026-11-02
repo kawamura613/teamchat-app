@@ -85,7 +85,8 @@ class ChannelTest extends TestCase
         $response->assertDontSee(route('channels.edit', $this->公開チャンネル), false);
         $response->assertSee(route('channels.show', $this->公開チャンネル), false);
 
-        // 「メンバー」は単位3（acceptance.md 3-2）。いまはどちらにも出ない
+        // 「メンバー」はプライベート×作成者の行だけ（単位3 で足した）。この人は
+        // 作成者でなく、相手も公開チャンネルなので、どちらの理由でも出ない
         $response->assertDontSee('>メンバー<', false);
     }
 

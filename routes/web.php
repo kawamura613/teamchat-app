@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ChannelController;
+use App\Http\Controllers\ChannelMemberController;
 use App\Http\Controllers\MessageController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -29,7 +30,7 @@ Route::get('/', function () {
 // ルートの時点で 404 にする（behavior.md 3-2「そのURLがない」）。グループに
 // 付けておけば、単位3 で members 系を足したときも自動で効く。
 Route::middleware(['auth', 'cache.headers:no_store;no_cache;must_revalidate;max_age=0'])
-    ->whereNumber(['channel', 'message'])
+    ->whereNumber(['channel', 'message', 'user'])
     ->group(function () {
         Route::get('/channels', [ChannelController::class, 'index'])->name('channels.index');
 
@@ -43,6 +44,13 @@ Route::middleware(['auth', 'cache.headers:no_store;no_cache;must_revalidate;max_
         Route::patch('/channels/{channel}', [ChannelController::class, 'update'])->name('channels.update');
         Route::get('/channels/{channel}/delete', [ChannelController::class, 'confirmDelete'])->name('channels.delete');
         Route::delete('/channels/{channel}', [ChannelController::class, 'destroy'])->name('channels.destroy');
+
+        // SC-09 はプライベートチャンネル専用。公開チャンネルの ID で来たら
+        // 404 にする（permissions-api.md 1-4 の △1）。判定は ChannelPolicy。
+        // {user} はルートモデルバインディングで引く（論理削除は無い）。
+        Route::get('/channels/{channel}/members', [ChannelMemberController::class, 'index'])->name('channels.members.index');
+        Route::post('/channels/{channel}/members', [ChannelMemberController::class, 'store'])->name('channels.members.store');
+        Route::delete('/channels/{channel}/members/{user}', [ChannelMemberController::class, 'destroy'])->name('channels.members.destroy');
 
         // {message} はルートモデルバインディングで引く。この 3 本は既定のまま
         // （削除済みを除外）にして、削除済みの編集・再削除をここで 404 にする
