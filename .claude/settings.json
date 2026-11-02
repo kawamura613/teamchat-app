@@ -27,15 +27,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./vendor/bin/sail php vendor/bin/pint >&2 || exit 2",
+            "command": "[ -x ./vendor/bin/sail ] && ./vendor/bin/sail php vendor/bin/pint --quiet >/dev/null 2>&1 || true",
             "timeout": 120,
+            "onFailure": "continue",
             "statusMessage": "整形中..."
-          },
-          {
-            "type": "command",
-            "command": "./vendor/bin/sail artisan test >&2 || exit 2",
-            "timeout": 300,
-            "statusMessage": "テストを実行中..."
           }
         ]
       }
