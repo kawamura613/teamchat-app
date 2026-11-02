@@ -89,6 +89,16 @@ class ChannelTest extends TestCase
         $response->assertDontSee('>メンバー<', false);
     }
 
+    public function test_チャンネルを見られるかの判定が一覧と同じ答えになる(): void
+    {
+        // ChannelPolicy@view は単位4 の MessagePolicy が先に通す入口。判定が
+        // visibleTo スコープ 1 か所を見ていることを固定する（permissions-api.md 1-6）
+        $this->assertTrue($this->作成者->can('view', $this->公開チャンネル));
+        $this->assertTrue($this->見られない人->can('view', $this->公開チャンネル));
+        $this->assertTrue($this->見られる人->can('view', $this->プライベートチャンネル));
+        $this->assertFalse($this->見られない人->can('view', $this->プライベートチャンネル));
+    }
+
     public function test_チャンネルが0件のときに空状態の枠が出る(): void
     {
         Channel::query()->delete();
@@ -234,6 +244,23 @@ class ChannelTest extends TestCase
         $this->actingAs($this->見られる人)
             ->post(route('channels.store'), $this->作成の入力(['name' => '採用プロジェクト']))
             ->assertSessionHasErrors(['name' => 'この名前のチャンネルはすでにあります']);
+    }
+
+    public function test_型の合わない値を送っても戻った画面が落ちない(): void
+    {
+        $response = $this->actingAs($this->作成者)->from(route('channels.create'))
+            ->post(route('channels.store'), ['name' => ['x'], 'description' => ['y'], 'is_private' => '0']);
+
+        $response->assertRedirect(route('channels.create'));
+        $response->assertSessionHasErrors([
+            'name' => 'チャンネル名を入力してください',
+            'description' => '説明を入力してください',
+        ]);
+
+        // 戻った画面が描けること。以前は mb_strlen(array) で 500 になっていた
+        // （screens.md 4-1 の「型が合わない値」）
+        $this->actingAs($this->作成者)->get(route('channels.create'))->assertOk();
+        $this->assertDatabaseMissing('channels', ['name' => 'x']);
     }
 
     // 直す

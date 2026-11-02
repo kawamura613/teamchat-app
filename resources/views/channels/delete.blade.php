@@ -7,6 +7,10 @@
 @section('title', 'チャンネルを削除する')
 
 @section('content')
+    @php
+        // 戻ってきた入力は文字列とは限らない（screens.md 4-1 の「型が合わない値」）
+        $打った名前 = is_string($値 = old('name', '')) ? $値 : '';
+    @endphp
     <div class="page" style="max-width:680px">
         <h1 class="h-title" style="margin-bottom:var(--sp-6)">チャンネルを削除する</h1>
         <div class="card" style="border-color:var(--danger-line)">
@@ -18,7 +22,7 @@
                     @csrf
                     @method('DELETE')
                     <div class="field @error('name') is-error @enderror">
-                        <input class="input" type="text" name="name" value="{{ old('name') }}" placeholder="{{ $channel->name }}" style="max-width:280px">
+                        <input class="input" type="text" name="name" value="{{ $打った名前 }}" placeholder="{{ $channel->name }}" style="max-width:280px">
                         @error('name')
                             <span class="err">{{ $message }}</span>
                         @enderror

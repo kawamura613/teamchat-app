@@ -22,8 +22,10 @@ class ChannelPolicy
      */
     public function view(User $user, Channel $channel): bool
     {
-        return ! $channel->is_private
-            || $channel->members()->whereKey($user->getKey())->exists();
+        // 「見られるか」の定義は visibleTo スコープ 1 か所に置く。ここに同じ条件を
+        // 書き直すと物差しが 2 つになり、スコープを広げたときに静かに食い違う
+        // （CLAUDE.md「visibleTo スコープだけを通す。自前の where を書かない」）
+        return Channel::visibleTo($user)->whereKey($channel->getKey())->exists();
     }
 
     /**

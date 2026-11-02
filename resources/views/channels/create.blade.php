@@ -6,6 +6,12 @@
 @section('title', 'チャンネルを作る')
 
 @section('content')
+    @php
+        // 戻ってきた入力は文字列とは限らない（name[]=x のような細工）。文字列以外は
+        // 空にして、戻った画面が落ちないようにする（screens.md 4-1 の「型が合わない値」）
+        $打った名前 = is_string($値 = old('name', '')) ? $値 : '';
+        $打った説明 = is_string($値 = old('description', '')) ? $値 : '';
+    @endphp
     <div class="page" style="max-width:680px">
         <h1 class="h-title" style="margin-bottom:var(--sp-6)">チャンネルを作る</h1>
         <div class="card">
@@ -14,26 +20,26 @@
                     @csrf
                     <div class="field @error('name') is-error @enderror">
                         <label class="label" for="name">チャンネル名<span class="req">*</span></label>
-                        <input class="input" id="name" type="text" name="name" value="{{ old('name') }}">
+                        <input class="input" id="name" type="text" name="name" value="{{ $打った名前 }}">
                         <div class="field-foot">
                             @error('name')
                                 <span class="err">{{ $message }}</span>
                             @else
                                 <span class="help"></span>
                             @enderror
-                            <span class="count" data-count-for="name" data-count-max="50">{{ mb_strlen(old('name', '')) }} / 50</span>
+                            <span class="count" data-count-for="name" data-count-max="50">{{ mb_strlen($打った名前) }} / 50</span>
                         </div>
                     </div>
                     <div class="field @error('description') is-error @enderror">
                         <label class="label" for="description">説明</label>
-                        <textarea class="textarea" id="description" name="description">{{ old('description') }}</textarea>
+                        <textarea class="textarea" id="description" name="description">{{ $打った説明 }}</textarea>
                         <div class="field-foot">
                             @error('description')
                                 <span class="err">{{ $message }}</span>
                             @else
                                 <span class="help">何について話す場所かを短く書きます。</span>
                             @enderror
-                            <span class="count" data-count-for="description" data-count-max="200">{{ mb_strlen(old('description', '')) }} / 200</span>
+                            <span class="count" data-count-for="description" data-count-max="200">{{ mb_strlen($打った説明) }} / 200</span>
                         </div>
                     </div>
                     <div class="field @error('is_private') is-error @enderror">

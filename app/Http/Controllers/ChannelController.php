@@ -129,6 +129,7 @@ class ChannelController extends Controller
             ],
         ], [
             'name.required' => 'チャンネル名を入力してください',
+            'name.string' => 'チャンネル名を入力してください',
         ]);
 
         if ($validator->fails()) {
@@ -172,6 +173,9 @@ class ChannelController extends Controller
     {
         $rules = [
             'name' => [
+                // bail を先頭に置く。これが無いと、型が合わないまま下の
+                // クロージャ規則まで進み、配列が where に渡って落ちる
+                'bail',
                 'required',
                 'string',
                 'max:50',
@@ -193,18 +197,23 @@ class ChannelController extends Controller
                     }
                 },
             ],
-            'description' => ['nullable', 'string', 'max:200'],
+            'description' => ['bail', 'nullable', 'string', 'max:200'],
         ];
 
         if (! $current) {
             $rules['is_private'] = ['required', 'boolean'];
         }
 
+        // 型のルールにも文言を付ける。locale が en なので、指定しないと英語の
+        // 既定文言が出る（CLAUDE.md / screens.md 4-1 の「型が合わない値」）
         return $request->validate($rules, [
             'name.required' => 'チャンネル名を入力してください',
+            'name.string' => 'チャンネル名を入力してください',
             'name.max' => 'チャンネル名は50文字以内で入力してください',
+            'description.string' => '説明を入力してください',
             'description.max' => '説明は200文字以内で入力してください',
             'is_private.required' => '公開範囲を選択してください',
+            'is_private.boolean' => '公開範囲を選択してください',
         ]);
     }
 }
