@@ -37,6 +37,35 @@ class MessageController extends Controller
     }
 
     /**
+     * F-18 スレッド（SC-07 / 列C）。
+     *
+     * それ自身の URL を持つ画面（Q-24 の想定 / permissions-api.md 2-1）。
+     * バインディングは ->withTrashed() なので、削除されたメッセージでも開ける
+     * （questions.md 決定1 の出口1-b）。
+     *
+     * **この 2 つは順番が大事。**
+     * (1) 先に「見られるチャンネルか」で 404 にする。authorize('view', …) だと
+     *     403 になって「そこに部屋がある」ことが漏れる（permissions-api.md 1-5）
+     * (2) そのあとで、返信の ID なら親へ正規化する（決定6 / behavior.md 4-5）。
+     *     逆にすると、見られないチャンネルの返信 ID でも 302 が返って、その ID が
+     *     あることが漏れる
+     */
+    public function show(Request $request, Message $message): View|RedirectResponse
+    {
+        $channel = $this->visibleChannel($request, $message->channel_id);
+
+        if ($message->parent_id !== null) {
+            // 302。永久の移転ではないので 301 にはしない（behavior.md 4-5）。
+            // 錨を付けて、人から送られた返信の URL でもその 1 件に着地させる
+            return redirect()->to(
+                route('messages.show', $message->parent_id).'#message-'.$message->getKey()
+            );
+        }
+
+        return $this->threadScreen($channel, $message, null);
+    }
+
+    /**
      * F-15 その場で書き換えるときの入口（列D ＋ △3 / behavior.md 4-2）。
      *
      * 新しい画面ではなく、SC-06 のその1件だけを編集中にして返す。
@@ -78,13 +107,13 @@ class MessageController extends Controller
         $message->edited_at = now();
         $message->save();
 
-        return $this->backTo($message);
+        return $this->backTo($request, $message);
     }
 
     /**
      * F-16 メッセージ削除（列D ＋ △3）。
      */
-    public function destroy(Message $message): RedirectResponse
+    public function destroy(Request $request, Message $message): RedirectResponse
     {
         $this->abortIfReply($message);
         $this->authorize('delete', $message);
@@ -95,18 +124,21 @@ class MessageController extends Controller
 
         // 跡地は自分が消したのか相手が消したのかを言わないので、ここだけは
         // 同じ画面に戻るのに知らせを出す（behavior.md 4-6）
-        return $this->backTo($message)->with('status', 'メッセージを削除しました');
+        return $this->backTo($request, $message)->with('status', 'メッセージを削除しました');
     }
 
     /**
-     * 返信に対する編集・削除は単位5（behavior.md 4-2）。
+     * 返信に対する編集・削除は、SC-07 の Blade ができるまで 404（behavior.md 4-2）。
      *
-     * 出す先の SC-07 がまだ無いので、edit・update・destroy の **3 本そろって**
-     * 404 を返す。1 本だけ 404 にすると、入力チェックに落ちたときの戻り先
-     * （messages.edit）が 404 になって、打った内容が消える。
+     * 出す先の画面（`messages/show.blade.php`）がまだ無いので、edit・update・
+     * destroy の **3 本そろって** 404 を返す。1 本だけ 404 にすると、入力チェックに
+     * 落ちたときの戻り先（messages.edit）が 404 になって、打った内容が消える。
      *
      * これは「出す先が無い」ことによる 404 なので、**authorize より先に**見る。
-     * 単位5 で SC-07 を作ったら、この 3 か所の呼び出しを外す。
+     *
+     * **設計書（behavior.md 4-2）はもう外したあとの記述になっている。**SC-07 の
+     * Blade を足す次のコミットで、この 3 か所の呼び出しとこのメソッドを消し、
+     * `edit()` が返信なら `threadScreen()` を返すようにして食い違いを閉じる。
      */
     private function abortIfReply(Message $message): void
     {
@@ -130,18 +162,51 @@ class MessageController extends Controller
     }
 
     /**
+     * SC-07 を組む。**左の本文側は SC-06 と同じものを出す**（screens.md 3-5）。
+     *
+     * 返信件数は削除済みの親・子を含めて数える。数え方は Message::replyCount()
+     * 1 か所に置いてある（behavior.md 1-4）。返信も user を先読みする
+     * （Message@thread() の中で済ませている）。
+     */
+    private function threadScreen(Channel $channel, Message $parent, ?int $editingId): View
+    {
+        $parent->loadCount(Message::replyCount());
+        $parent->loadMissing('user');
+
+        return view('messages.show', [
+            'channel' => $channel,
+            'messages' => $channel->timeline()->get(),
+            'parent' => $parent,
+            'replies' => $parent->thread()->get(),
+            'editingId' => $editingId,
+        ]);
+    }
+
+    /**
      * 操作のあとの戻り先（behavior.md 4-3）。
      *
-     * 送られてきた URL にそのまま飛ばすと外部サイトへ飛ばせる口になるので、
-     * URL は受け取らずサーバ側で組む。本来は隠し項目 `from` の2択だが、
-     * もう一方（thread）の行き先 messages.show は単位5。**`from` が無いときは
-     * channel として扱う**という決めがあるので、単位4 はこれで足りる。
+     * 隠し項目 `from` の **2 択（channel / thread）だけ**を見て、URL はサーバ側で
+     * 組む。送られてきた文字列にそのまま飛ばすと外部サイトへ飛ばせる口
+     * （オープンリダイレクト）になるので、URL は受け取らない。2 択なら、その口が
+     * ない。`Referer` も使わない（ブラウザや設定で落ちる）。
+     *
+     * **`from` が無い・読めないときは channel として扱う**（4-3 の決め）。
+     *
+     * 錨はどちらにも付ける。付けないと app.js が一覧を末尾まで送ってしまい、
+     * いま触った 1 件が画面の外になる（4-4）。
      */
-    private function backTo(Message $message): RedirectResponse
+    private function backTo(Request $request, Message $message): RedirectResponse
     {
-        return redirect()->to(
-            route('channels.show', $message->channel_id).'#message-'.$message->getKey()
-        );
+        $錨 = '#message-'.$message->getKey();
+
+        if ($request->input('from') === 'thread') {
+            // 返信なら親のスレッド、返信でなければそのメッセージ自身のスレッド
+            return redirect()->to(
+                route('messages.show', $message->parent_id ?? $message->getKey()).$錨
+            );
+        }
+
+        return redirect()->to(route('channels.show', $message->channel_id).$錨);
     }
 
     /**

@@ -3,6 +3,7 @@
 use App\Http\Controllers\ChannelController;
 use App\Http\Controllers\ChannelMemberController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\ReplyController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -52,12 +53,20 @@ Route::middleware(['auth', 'cache.headers:no_store;no_cache;must_revalidate;max_
         Route::post('/channels/{channel}/members', [ChannelMemberController::class, 'store'])->name('channels.members.store');
         Route::delete('/channels/{channel}/members/{user}', [ChannelMemberController::class, 'destroy'])->name('channels.members.destroy');
 
-        // {message} はルートモデルバインディングで引く。この 3 本は既定のまま
-        // （削除済みを除外）にして、削除済みの編集・再削除をここで 404 にする
-        // （permissions-api.md 2-2 の表 / Q-19）。withTrashed() を付ける
-        // messages.show・messages.replies.store は単位5。
+        // {message} はルートモデルバインディングで引く。edit・update・destroy の
+        // 3 本は既定のまま（削除済みを除外）にして、削除済みの編集・再削除を
+        // ここで 404 にする（permissions-api.md 2-2 の表 / Q-19）。
+        //
+        // show と replies.store の 2 本だけ ->withTrashed() を付ける。削除された
+        // メッセージのスレッドを開けて（questions.md 決定1 の出口1-b）、その跡地に
+        // 返信も続けられる（回答6 / 出口1-d）ようにするため。
+        //
+        // {message} は返信でも同じルートで受ける（data.md 1-3 の決定1。返信も
+        // 同じ messages テーブルの行）。
         Route::post('/channels/{channel}/messages', [MessageController::class, 'store'])->name('channels.messages.store');
+        Route::get('/messages/{message}', [MessageController::class, 'show'])->name('messages.show')->withTrashed();
         Route::get('/messages/{message}/edit', [MessageController::class, 'edit'])->name('messages.edit');
         Route::patch('/messages/{message}', [MessageController::class, 'update'])->name('messages.update');
         Route::delete('/messages/{message}', [MessageController::class, 'destroy'])->name('messages.destroy');
+        Route::post('/messages/{message}/replies', [ReplyController::class, 'store'])->name('messages.replies.store')->withTrashed();
     });
