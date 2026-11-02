@@ -23,8 +23,11 @@ class ChannelPolicy
     {
         // 「見られるか」の定義は visibleTo スコープ 1 か所に置く。ここに同じ条件を
         // 書き直すと物差しが 2 つになり、スコープを広げたときに静かに食い違う
-        // （CLAUDE.md「visibleTo スコープだけを通す。自前の where を書かない」）
-        return Channel::visibleTo($user)->whereKey($channel->getKey())->exists();
+        // （CLAUDE.md「visibleTo スコープだけを通す。自前の where を書かない」）。
+        //
+        // 1 枚の画面でメッセージ 1 件ごとに呼ばれるので、答えを覚えるのは
+        // Channel@isVisibleTo に任せる（permissions-api.md 1-6）
+        return $channel->isVisibleTo($user);
     }
 
     /**

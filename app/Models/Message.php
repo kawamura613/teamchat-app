@@ -62,6 +62,8 @@ class Message extends Model
      * - 跡地を出すために削除済みも取ってくる（questions.md 決定1 の出口1-c）
      * - 並びは古い順。同じ時刻のときは id で並び順を決める
      * - 投稿者名とアバターを出すので user を先読みする（N+1 を避ける）
+     * - **channel も先読みする**（Channel@timeline と同じ理由。部品が 1 件ごとに
+     *   can('update') を聞き、MessagePolicy が $message->channel を触る）
      *
      * 返信に返信は付かないので（回答8）、ここから先は辿らない。
      */
@@ -69,7 +71,7 @@ class Message extends Model
     {
         return $this->replies()
             ->withTrashed()
-            ->with('user')
+            ->with(['user', 'channel'])
             ->oldest()
             ->orderBy('id');
     }

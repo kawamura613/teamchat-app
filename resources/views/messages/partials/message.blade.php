@@ -7,9 +7,11 @@
 
      アンカーは跡地にも振る（behavior.md 4-4）。
 
-     $place … どちらの画面に出しているか。'channel'（SC-06 の一覧）か
-              'thread'（SC-07 のパネル）。既定値は持たせない。渡し漏れで落ちる
-              ほうが、黙って片方の見え方になるより安全。 --}}
+     $place … どこに出しているか。既定値は持たせない。渡し漏れで落ちるほうが、
+              黙って片方の見え方になるより安全。
+       'channel'      … SC-06 の一覧（SC-07 の左側も同じ）
+       'thread-origin'… SC-07 のパネルの「元のメッセージ」
+       'thread'       … SC-07 のパネルの返信 --}}
 @php
     $編集中 = $editingId === $message->id;
     // 編集・ごみ箱を出す条件は **MessagePolicy に聞く**（screens.md 3-3・4-9）。
@@ -23,10 +25,17 @@
     // 元のメッセージは行き先が自分自身のスレッドになり、返信は1段までで
     // 付けられない（回答8）
     $一覧に出している = $place === 'channel';
-    // 操作のあとの戻り先。隠し項目 from の 2 択だけを送る（behavior.md 4-3）
+    // **SC-07 は親を左の一覧とパネルの両方に出す**ので、パネルの「元のメッセージ」
+    // だけ id に接頭辞を付ける（behavior.md 4-4）。返信には付けない。返信は
+    // パネルにしか出ないので重複せず、付けると投稿後の
+    // /messages/{親のID}#message-{新しい返信のID} の着地が外れる
+    $接頭辞 = $place === 'thread-origin' ? 'thread-' : '';
+    // 操作のあとの戻り先。**値を決めるのはここ 1 か所**で、編集のフォームには
+    // 決まった値を渡す。2 か所で別々に組むと、画面が増えたときに同じ行の
+    // 削除と編集で食い違う（behavior.md 4-3）
     $戻り先 = $一覧に出している ? 'channel' : 'thread';
 @endphp
-<article class="msg{{ $message->trashed() ? ' msg--deleted' : '' }}" id="message-{{ $message->id }}">
+<article class="msg{{ $message->trashed() ? ' msg--deleted' : '' }}" id="{{ $接頭辞 }}message-{{ $message->id }}">
     @if ($一覧に出している || $直せる)
         <div class="msg__acts">
             {{-- 返信 → SC-07。削除されたメッセージにも残す（screens.md 3-3 / AC-4-4） --}}
@@ -34,7 +43,8 @@
                 <a class="icon-btn" href="{{ route('messages.show', $message) }}" title="返信"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg></a>
             @endif
             @if ($直せる)
-                <a class="icon-btn" href="{{ route('messages.edit', $message) }}" title="編集" data-edit-open><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M11 2.6 13.4 5 5.4 13H3v-2.4z"/></svg></a>
+                {{-- GET なので from はクエリ文字列で渡す（behavior.md 4-3） --}}
+                <a class="icon-btn" href="{{ route('messages.edit', [$message, 'from' => $戻り先]) }}" title="編集" data-edit-open><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M11 2.6 13.4 5 5.4 13H3v-2.4z"/></svg></a>
                 {{-- 確認は JavaScript の1枚で、画面は増やさない（questions.md 決定11・仮） --}}
                 <form method="POST" action="{{ route('messages.destroy', $message) }}" data-confirm="このメッセージを削除しますか？　元に戻せません。">
                     @csrf
@@ -59,7 +69,7 @@
         @else
             <div class="msg__body" @if ($編集中) hidden @endif>{{ $message->body }}@if ($message->edited_at)<span class="msg__edited">編集済み</span>@endif</div>
             @if ($直せる)
-                @include('messages.partials.editor', ['message' => $message, 'open' => $編集中, 'place' => $place])
+                @include('messages.partials.editor', ['message' => $message, 'open' => $編集中, 'from' => $戻り先, 'idPrefix' => $接頭辞])
             @endif
         @endif
         @if ($返信件数 >= 1 && $一覧に出している)

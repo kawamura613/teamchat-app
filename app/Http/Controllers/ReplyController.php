@@ -25,13 +25,13 @@ class ReplyController extends Controller
 
     public function store(Request $request, Message $message): RedirectResponse
     {
-        // 見られないチャンネルへの返信はここで 404（permissions-api.md 1-5）。
-        // ポリシーに任せると 403 になり、「そこに部屋がある」ことが漏れる。
-        // 絞り込みは visibleTo スコープ 1 か所を通す（CLAUDE.md）
-        $this->visibleChannel($request, $message->channel_id);
-
-        // 列C ＋ △4。返信の ID に返信しようとしたら 403。親が削除済みでも通る
-        // （回答6 / questions.md 決定1 の出口1-d）
+        // 列C ＋ △4。見られないチャンネルへの返信は、MessagePolicy@reply が
+        // ChannelPolicy@view を先に通して **404** を返す（denyAsNotFound。
+        // permissions-api.md 1-5・1-6）。返信の ID に返信しようとしたら 403。
+        // 親が削除済みでも通る（回答6 / questions.md 決定1 の出口1-d）。
+        //
+        // **visibleChannel() を重ねて呼ばない。**同じ問い合わせが 2 回走るだけで、
+        // 答えは変わらない（permissions-api.md 1-6 の 2026-11-02 の行）
         $this->authorize('reply', $message);
 
         // $request->validate() だと、落ちたときにエラーが default の袋に入る。
@@ -43,8 +43,12 @@ class ReplyController extends Controller
         $validator = Validator::make($request->all(), $this->rules(), $this->messages());
 
         if ($validator->fails()) {
-            // 戻り先は同じスレッド。返信欄の下にエラー文が出る（screens.md 4-6）
-            return redirect()->route('messages.show', $message)
+            // 戻り先は同じスレッド。返信欄の下にエラー文が出る（screens.md 4-6）。
+            // 錨を付けないと素で開いた扱いになり、app.js が左の一覧を末尾まで
+            // 送って、打っていた場所を見失う（behavior.md 4-3・4-4）
+            return redirect()->to(
+                route('messages.show', $message).'#message-'.$message->getKey()
+            )
                 ->withErrors($validator, 'reply')
                 ->withInput();
         }

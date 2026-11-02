@@ -3,8 +3,13 @@
 
      元のメッセージも返信も、一覧と同じ messages.partials.message を通す。
      **本文と跡地の出し分けをここに書き写さない**（questions.md 決定1 の出口1 /
-     T-4-20）。place を 'thread' で渡すので、返信アイコンと「返信◯件」は出ず、
-     操作のあとの戻り先は thread になる。 --}}
+     T-4-20）。place がパネル側の値なので、返信アイコンと「返信◯件」は出ず、
+     操作のあとの戻り先は thread になる。
+
+     元のメッセージだけ place を 'thread-origin' にする。**親は左の一覧にも
+     出ているので、id が重複しないよう接頭辞を付ける**（behavior.md 4-4）。
+     返信はパネルにしか出ないので 'thread' のまま（接頭辞を付けると、投稿後の
+     #message-{新しい返信のID} の着地が外れる）。 --}}
 @php
     // 返信欄に戻すのは、落ちたのが返信欄のときだけ。左の投稿欄は 'default'、
     // 編集中は 'edit' の袋なので、袋で見分ける。同じ画面に name="body" の欄が
@@ -27,7 +32,7 @@
         {{-- 元のメッセージ。**削除されていても出す**（跡地の枠＋投稿者名＋日時）。
              ここが 404 にならないことが決定1 の出口1-b --}}
         <div class="thread__origin">
-            @include('messages.partials.message', ['message' => $parent, 'editingId' => $editingId, 'place' => 'thread'])
+            @include('messages.partials.message', ['message' => $parent, 'editingId' => $editingId, 'place' => 'thread-origin'])
         </div>
         @if ($parent->replies_count >= 1)
             {{-- 元のメッセージと返信の間の区切り。削除済みの返信も数に入っている

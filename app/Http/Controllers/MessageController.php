@@ -71,14 +71,14 @@ class MessageController extends Controller
     /**
      * F-15 その場で書き換えるときの入口（列D ＋ △3 / behavior.md 4-2）。
      *
-     * 新しい画面ではない。**返信でないメッセージなら SC-06、返信なら SC-07** を
-     * 出して、その1件だけを編集中にする（まわりのメッセージはそのまま）。
+     * 新しい画面ではない。どちらを出すかは **`from` で決める**（behavior.md 4-2）。
+     * その1件だけを編集中にする（まわりのメッセージはそのまま）。
      */
-    public function edit(Message $message): View
+    public function edit(Request $request, Message $message): View
     {
         $this->authorize('update', $message);
 
-        return $this->screenFor($message, $message->getKey());
+        return $this->screenFor($request, $message, $message->getKey());
     }
 
     /**
@@ -96,8 +96,13 @@ class MessageController extends Controller
 
         if ($validator->fails()) {
             // 錨を付けないと app.js が一覧を末尾まで送ってしまい、編集中の
-            // 入力欄もエラー文も画面の外になる（behavior.md 4-4）
-            return redirect()->to(route('messages.edit', $message).'#message-'.$message->getKey())
+            // 入力欄もエラー文も画面の外になる（behavior.md 4-4）。
+            // **from も引き継ぐ。**引き継がないと、保存が通ったときは SC-07 に
+            // 戻るのに落ちたときだけ SC-06 に出る、という非対称になる（4-2）
+            return redirect()->to(
+                route('messages.edit', [$message, 'from' => $this->from($request)])
+                .'#message-'.$message->getKey()
+            )
                 // 投稿欄と同じ body なので、編集中のエラーは別の袋に入れる
                 ->withErrors($validator, 'edit')
                 ->withInput();
@@ -138,18 +143,25 @@ class MessageController extends Controller
      * `authorize('update', …)` が `ChannelPolicy@view` を通しているので、
      * 「見られるか」はもう済んでいる（permissions-api.md 1-6）。
      *
+     * **`from` が `thread` なら SC-07。**それ以外（`channel`・無い・読めない）は
+     * `{message}` が返信なら SC-07、そうでなければ SC-06（behavior.md 4-2）。
+     * `from` を見るのは、返信でないメッセージを SC-07 の中で編集したときに、
+     * パネルごと SC-06 へ落ちてしまうのを防ぐため。
+     *
      * 親は `withTrashed()` で引く。削除済みの親にぶら下がった返信を編集中に
      * するとき、既定のままだと親が解決できない（決定1 の出口1-b と同じ事情）。
      */
-    private function screenFor(Message $message, ?int $editingId): View
+    private function screenFor(Request $request, Message $message, ?int $editingId): View
     {
-        if ($message->parent_id === null) {
+        $返信である = $message->parent_id !== null;
+
+        if (! $返信である && $this->from($request) !== 'thread') {
             return $this->screen($message->channel, $editingId);
         }
 
         return $this->threadScreen(
             $message->channel,
-            $message->parent()->withTrashed()->sole(),
+            $返信である ? $message->parent()->withTrashed()->sole() : $message,
             $editingId
         );
     }
@@ -175,17 +187,27 @@ class MessageController extends Controller
      * 返信件数は削除済みの親・子を含めて数える。数え方は Message::replyCount()
      * 1 か所に置いてある（behavior.md 1-4）。返信も user を先読みする
      * （Message@thread() の中で済ませている）。
+     *
+     * **親は一覧にも並んでいる**（一覧は返信でない行だけなので、スレッドの親は
+     * 必ず入っている）。同じ行をもう一度数えないよう、一覧で数え終わったものを
+     * そのまま使う。見つからないときだけ自分で数える（保険）。
      */
     private function threadScreen(Channel $channel, Message $parent, ?int $editingId): View
     {
-        $parent->loadCount(Message::replyCount());
-        $parent->loadMissing('user');
+        $messages = $channel->timeline()->get();
+        $親 = $messages->firstWhere('id', $parent->getKey());
+
+        if ($親 === null) {
+            $親 = $parent;
+            $親->loadCount(Message::replyCount());
+            $親->loadMissing('user');
+        }
 
         return view('messages.show', [
             'channel' => $channel,
-            'messages' => $channel->timeline()->get(),
-            'parent' => $parent,
-            'replies' => $parent->thread()->get(),
+            'messages' => $messages,
+            'parent' => $親,
+            'replies' => $親->thread()->get(),
             'editingId' => $editingId,
         ]);
     }
@@ -207,7 +229,7 @@ class MessageController extends Controller
     {
         $錨 = '#message-'.$message->getKey();
 
-        if ($request->input('from') === 'thread') {
+        if ($this->from($request) === 'thread') {
             // 返信なら親のスレッド、返信でなければそのメッセージ自身のスレッド
             return redirect()->to(
                 route('messages.show', $message->parent_id ?? $message->getKey()).$錨
@@ -215,5 +237,16 @@ class MessageController extends Controller
         }
 
         return redirect()->to(route('channels.show', $message->channel_id).$錨);
+    }
+
+    /**
+     * 送られてきた `from` を **2 択（channel / thread）に丸める**（behavior.md 4-3）。
+     *
+     * 無い・読めないときは channel。読む場所をここ 1 か所にして、戻り先・編集中の
+     * 画面選び・落ちたときの 302 が同じ物差しを通る。
+     */
+    private function from(Request $request): string
+    {
+        return $request->input('from') === 'thread' ? 'thread' : 'channel';
     }
 }

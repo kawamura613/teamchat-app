@@ -374,8 +374,10 @@ class ThreadTest extends TestCase
         // screens.md 4-6。エラー文は返信欄の下・文字数表示の左に出す
         $親 = $this->makeMessage($this->公開チャンネル, ['body' => '親の本文']);
 
+        // 錨も付ける。無いと素で開いた扱いになり、app.js が左の一覧を末尾まで
+        // 送って打っていた場所を見失う（behavior.md 4-3・4-4）
         $this->postReply($親, ['body' => ''])
-            ->assertRedirect(route('messages.show', $親));
+            ->assertRedirect(route('messages.show', $親).'#message-'.$親->id);
 
         $response = $this->actingAs($this->作成者)
             ->followingRedirects()
@@ -387,7 +389,72 @@ class ThreadTest extends TestCase
         $response->assertSee('class="composer__box is-error"', false);
     }
 
+    public function test_同じidが1枚の画面に2つ出ない(): void
+    {
+        // behavior.md 4-4。**SC-07 は親を左の一覧とパネルの両方に出す**ので、
+        // パネルの「元のメッセージ」だけ id に thread- を付ける。同じ id が1枚に
+        // 2つあると、#message-{id} の着地と :target が先に出てくる左側に当たり、
+        // パネル側の文字数表示も getElementById が左を拾って動かなくなる
+        $親 = $this->makeMessage($this->公開チャンネル, ['body' => '元のメッセージの本文']);
+        $返信 = $this->makeMessage($this->公開チャンネル, ['parent_id' => $親->id, 'body' => '返信の本文']);
+
+        $本文 = $this->actingAs($this->作成者)->get(route('messages.show', $親))->getContent();
+
+        // 親は左の一覧に1つ、パネルに1つ（接頭辞つき）
+        $this->assertSame(1, mb_substr_count($本文, 'id="message-'.$親->id.'"'));
+        $this->assertSame(1, mb_substr_count($本文, 'id="thread-message-'.$親->id.'"'));
+
+        // 編集中の入力欄と、それを指す文字数表示も同じ分け方
+        foreach (['id', 'data-count-for'] as $属性) {
+            $this->assertSame(1, mb_substr_count($本文, $属性.'="message-body-'.$親->id.'"'));
+            $this->assertSame(1, mb_substr_count($本文, $属性.'="thread-message-body-'.$親->id.'"'));
+        }
+
+        // **返信には接頭辞を付けない。**返信はパネルにしか出ないので重複せず、
+        // 付けると投稿後の /messages/{親のID}#message-{新しい返信のID}（4-3）の
+        // 着地が外れる
+        $this->assertSame(1, mb_substr_count($本文, 'id="message-'.$返信->id.'"'));
+        $this->assertSame(0, mb_substr_count($本文, 'id="thread-message-'.$返信->id.'"'));
+    }
+
     // 消す
+
+    public function test_スレッドから元のメッセージを編集しても画面はスレッドのまま(): void
+    {
+        // behavior.md 4-2（4-3 を正とした）。返信でないメッセージを SC-07 の中で
+        // 編集したとき、保存が通れば SC-07 に戻るのに**落ちたときだけ SC-06 に
+        // 出る**という非対称を塞ぐ。出す画面は from で決める
+        $親 = $this->makeMessage($this->公開チャンネル, ['body' => '元のメッセージの本文']);
+        $this->makeMessage($this->公開チャンネル, ['parent_id' => $親->id, 'body' => '返信の本文']);
+
+        // from=thread なら、返信でなくてもパネルは開いたまま
+        $this->actingAs($this->作成者)
+            ->get(route('messages.edit', [$親, 'from' => 'thread']))
+            ->assertSee('app__body--thread', false);
+
+        // from が無ければ SC-06（返信でないメッセージの既定）
+        $this->actingAs($this->作成者)
+            ->get(route('messages.edit', $親))
+            ->assertDontSee('app__body--thread', false);
+
+        // 落ちたときは from と錨を引き継いで messages.edit へ戻す
+        $this->actingAs($this->作成者)
+            ->patch(route('messages.update', $親), ['body' => '   ', 'from' => 'thread'])
+            ->assertRedirect(route('messages.edit', [$親, 'from' => 'thread']).'#message-'.$親->id);
+
+        // 追って開くと、まだスレッドのまま編集中（ここが非対称だった）
+        $this->actingAs($this->作成者)
+            ->followingRedirects()
+            ->patch(route('messages.update', $親), ['body' => '   ', 'from' => 'thread'])
+            ->assertSee('app__body--thread', false);
+
+        // 保存が通ったときも同じスレッドへ戻る
+        $this->actingAs($this->作成者)
+            ->patch(route('messages.update', $親), ['body' => '直した本文', 'from' => 'thread'])
+            ->assertRedirect(route('messages.show', $親->id).'#message-'.$親->id);
+
+        $this->assertSame('直した本文', $親->fresh()->body);
+    }
 
     public function test_自分の返信は直せて他人の返信には操作が出ない(): void
     {

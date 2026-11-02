@@ -329,8 +329,11 @@ class MessageTest extends TestCase
         $response = $this->actingAs($this->作成者)
             ->patch(route('messages.update', $message), ['body' => '   ']);
 
-        // 錨つきで戻す。無いと app.js が一覧を末尾まで送って編集中が画面の外になる
-        $response->assertRedirect(route('messages.edit', $message).'#message-'.$message->id);
+        // 錨つきで戻す。無いと app.js が一覧を末尾まで送って編集中が画面の外になる。
+        // from も引き継ぐ（送っていないので channel。behavior.md 4-2）
+        $response->assertRedirect(
+            route('messages.edit', [$message, 'from' => 'channel']).'#message-'.$message->id
+        );
         $response->assertSessionHasErrors(['body' => 'メッセージを入力してください'], null, 'edit');
 
         $message->refresh();
