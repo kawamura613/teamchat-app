@@ -63,9 +63,11 @@ class ChannelMemberTest extends TestCase
         $response = $this->actingAs($this->作成者)->get(route('channels.members.index', $あとから));
         $response->assertOk();
 
-        $本文 = $response->getContent();
-        $this->assertLessThan(mb_strpos($本文, '鈴木 花子'), mb_strpos($本文, '佐藤 太郎'));
-        $this->assertLessThan(mb_strpos($本文, '高橋 健'), mb_strpos($本文, '鈴木 花子'));
+        // 上部バーにログイン中の人の名前が出るので、**一覧の中だけ**を見る。
+        // ページ全体で位置を比べると、作成者の名前が必ず先に当たって空振りする
+        $一覧 = mb_substr($response->getContent(), mb_strpos($response->getContent(), 'class="rows"'));
+        $this->assertLessThan(mb_strpos($一覧, '鈴木 花子'), mb_strpos($一覧, '佐藤 太郎'));
+        $this->assertLessThan(mb_strpos($一覧, '高橋 健'), mb_strpos($一覧, '鈴木 花子'));
     }
 
     public function test_人数の表示が行数と一致する(): void
@@ -93,8 +95,7 @@ class ChannelMemberTest extends TestCase
         $response->assertSee('作成者は外せません', false);
         $response->assertSee('disabled>外す<', false);
 
-        // 外すフォームは作成者のぶんだけ出ない（メンバー 2 人で 1 件）
-        $this->assertSame(1, mb_substr_count($response->getContent(), 'members/'));
+        // 外すフォームは作成者のぶんだけ出ない
         $response->assertSee(route('channels.members.destroy', [$this->プライベートチャンネル, $this->メンバー]), false);
         $response->assertDontSee(route('channels.members.destroy', [$this->プライベートチャンネル, $this->作成者]), false);
     }
@@ -139,6 +140,40 @@ class ChannelMemberTest extends TestCase
             ->get(route('channels.members.index', $this->プライベートチャンネル))->assertNotFound();
     }
 
+    public function test_作成者でない人は追加も削除もできない(): void
+    {
+        // T-3-11 を store・destroy にも広げる。index だけ見ていると、
+        // authorize が落ちてもテストが緑のままになる
+        $追加 = ['member' => 'takahashi@example.com'];
+
+        // 見えているが作成者でないメンバー → 403
+        $this->actingAs($this->メンバー)
+            ->post(route('channels.members.store', $this->プライベートチャンネル), $追加)->assertForbidden();
+        $this->actingAs($this->メンバー)
+            ->delete(route('channels.members.destroy', [$this->プライベートチャンネル, $this->メンバー]))->assertForbidden();
+
+        // そもそも見えない人 → 404（403 だとチャンネルの存在が漏れる）
+        $this->actingAs($this->メンバーでない人)
+            ->post(route('channels.members.store', $this->プライベートチャンネル), $追加)->assertNotFound();
+        $this->actingAs($this->メンバーでない人)
+            ->delete(route('channels.members.destroy', [$this->プライベートチャンネル, $this->メンバー]))->assertNotFound();
+
+        // どちらの経路でも行は動いていない
+        $this->assertSame(2, $this->プライベートチャンネル->members()->count());
+    }
+
+    public function test_メンバーでない人を外そうとすると404(): void
+    {
+        // permissions-api.md 1-5。detach は冪等なので、落とさないと 0 行消して
+        // 「メンバーを外しました」と返ってしまう
+        $response = $this->actingAs($this->作成者)
+            ->delete(route('channels.members.destroy', [$this->プライベートチャンネル, $this->メンバーでない人]));
+
+        $response->assertNotFound();
+        $response->assertSessionMissing('status');
+        $this->assertSame(2, $this->プライベートチャンネル->members()->count());
+    }
+
     // 追加する
 
     public function test_探す欄の3つのエラー文が出し分けられる(): void
@@ -171,6 +206,19 @@ class ChannelMemberTest extends TestCase
         $this->actingAs($this->作成者)
             ->post(route('channels.members.store', $this->プライベートチャンネル), ['member' => ['x']])
             ->assertSessionHasErrors(['member' => '表示名またはメールアドレスを入力してください']);
+
+        $this->assertSame(2, $this->プライベートチャンネル->members()->count());
+    }
+
+    public function test_探す欄は255文字が通り256文字で弾かれる(): void
+    {
+        // screens.md 4-7（表示名30字・メールアドレス255字のどちらも収まる上限）
+        $this->addMember(str_repeat('あ', 256))
+            ->assertSessionHasErrors(['member' => '表示名またはメールアドレスは255文字以内で入力してください']);
+
+        // 255 文字は上限を通り、そのうえで「見つかりません」まで進む
+        $this->addMember(str_repeat('あ', 255))
+            ->assertSessionHasErrors(['member' => '該当する社員が見つかりません']);
 
         $this->assertSame(2, $this->プライベートチャンネル->members()->count());
     }
@@ -290,6 +338,27 @@ class ChannelMemberTest extends TestCase
         $開いた->assertSee('外される前に書いた本文', false);
         $開いた->assertSee('鈴木 花子', false);
         $開いた->assertSee('返信1件', false);
+    }
+
+    public function test_チャンネル名はタイトルで一度だけエスケープされる(): void
+    {
+        // @yield 自体は素の echo だが、@section('title', $値) の第 2 引数は
+        // Factory::startSection が e() を通す。だから <title> は安全で、
+        // **包みを足すと二重エスケープになる**（レビューで一度間違えた所）。
+        // 動的な title を持つのは SC-06 だけ（SC-09 は「メンバー管理」固定）
+        $細工 = $this->makeChannel([
+            'name' => '</title><script>alert(1)</script>',
+            'is_private' => true,
+        ]);
+        $細工->members()->attach($this->作成者);
+
+        $response = $this->actingAs($this->作成者)->get(route('channels.show', $細工));
+        $response->assertOk();
+
+        // 素では出ない
+        $response->assertDontSee('<script>alert(1)</script>', false);
+        // 一度だけエスケープされている（&amp;lt; になっていたら包みが二重）
+        $response->assertSee('<title>&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;｜チームチャットアプリ</title>', false);
     }
 
     private function makeChannel(array $差分 = []): Channel

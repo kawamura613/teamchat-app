@@ -9,6 +9,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=1280">
+    {{-- @yield 自体は素の echo だが、@section('title', $値) の第 2 引数は
+         Factory::startSection が e() を通すので、ここは二重に包まない --}}
     <title>@yield('title')｜チームチャットアプリ</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <script src="{{ asset('js/app.js') }}" defer></script>

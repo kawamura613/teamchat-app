@@ -37,22 +37,19 @@ class ChannelMemberController extends Controller
         $channel = $this->visibleChannel($request, $channel);
         $this->authorize('manageMembers', $channel);
 
-        // 検査の中で引いた人をそのまま使う。二度引かないため参照で受ける
-        $見つかった人 = null;
-
         // 文言は screens.md 4-7 の表から写す。locale が en なので、型の
         // ルールにも日本語を付ける（CLAUDE.md）
-        $request->validate([
+        $validated = $request->validate([
             'member' => [
                 // bail を先頭に置く。無いと型が合わないまま下のクロージャまで
                 // 進み、配列が where に渡って落ちる
                 'bail',
                 'required',
                 'string',
-                function (string $attribute, mixed $value, Closure $fail) use ($channel, &$見つかった人) {
-                    // ぴたり一致する社員を1人だけ（questions.md Q-14）。
-                    // 打ちながら候補は出さないので、部分一致では探さない
-                    $候補 = User::where('name', $value)->orWhere('email', $value)->get();
+                // 表示名は30字・メールアドレスは255字（screens.md 4-7）
+                'max:255',
+                function (string $attribute, mixed $value, Closure $fail) use ($channel) {
+                    $候補 = $this->employees($value);
 
                     if ($候補->isEmpty()) {
                         $fail('該当する社員が見つかりません');
@@ -67,11 +64,9 @@ class ChannelMemberController extends Controller
                         return;
                     }
 
-                    $見つかった人 = $候補->first();
-
                     // 二重追加は (channel_id, user_id) の一意制約でも弾けるが、
                     // 画面には文言を出す（data.md 2-5 / screens.md 4-7）
-                    if ($channel->members()->whereKey($見つかった人->getKey())->exists()) {
+                    if ($channel->members()->whereKey($候補->first()->getKey())->exists()) {
                         $fail('この社員はすでにメンバーです');
                     }
                 },
@@ -79,10 +74,14 @@ class ChannelMemberController extends Controller
         ], [
             'member.required' => '表示名またはメールアドレスを入力してください',
             'member.string' => '表示名またはメールアドレスを入力してください',
+            'member.max' => '表示名またはメールアドレスは255文字以内で入力してください',
         ]);
 
+        // 検査を通っているので、ここでは必ず1人に絞れている。sole() にして
+        // おけば、そうでないときは黙って 0 行 attach するのではなく落ちる
+        // （クロージャの副作用で受け渡すと、attach(null) が静かに何もしない）
         // 1 行の INSERT で終わるのでトランザクションは要らない（behavior.md 3-5）
-        $channel->members()->attach($見つかった人);
+        $channel->members()->attach($this->employees($validated['member'])->sole());
 
         return redirect()->route('channels.members.index', $channel)
             ->with('status', 'メンバーを追加しました');
@@ -97,6 +96,11 @@ class ChannelMemberController extends Controller
         // 作成者の行は、作成者本人の操作でも外せない（403）
         $this->authorize('removeMember', [$channel, $user]);
 
+        // detach は冪等なので、外す対象がいないまま進むと 0 行消して
+        // 「メンバーを外しました」と返ってしまう。その行が無いときは 404
+        // （permissions-api.md 1-5）
+        abort_if(! $channel->members()->whereKey($user->getKey())->exists(), 404);
+
         // channel_user の行を 1 つ消すだけ。messages には触らないので、
         // その人が過去に書いたメッセージ・返信はそのまま残る
         // （data.md 2-3 / questions.md Q-15）
@@ -104,6 +108,22 @@ class ChannelMemberController extends Controller
 
         return redirect()->route('channels.members.index', $channel)
             ->with('status', 'メンバーを外しました');
+    }
+
+    /**
+     * 入力された文字列と**ぴたり一致する**社員（questions.md Q-14）。
+     *
+     * 打ちながら候補は出さないので、部分一致では探さない。読むのは id と
+     * 表示名だけなので、列を絞って password を持ち出さない。
+     *
+     * @return Collection<int, User>
+     */
+    private function employees(string $値): Collection
+    {
+        return User::select('id', 'name')
+            ->where('name', $値)
+            ->orWhere('email', $値)
+            ->get();
     }
 
     /**
