@@ -58,4 +58,28 @@ class Channel extends Model
     {
         return $this->hasMany(Message::class);
     }
+
+    /**
+     * SC-06 に出すメッセージ（F-13）。
+     *
+     * 忘れると静かに壊れる決めを、この 1 か所にまとめてある。
+     * - 返信は一覧に流さないので parent_id が NULL の行だけ（data.md 2-4）
+     * - 並びは古い順（回答7）。同じ時刻のときは id で並び順を決める
+     * - 跡地を出すために削除済みも取ってくる（questions.md 決定1 の出口1）
+     * - 返信件数は削除済みの親・子を含めて数える。withCount の既定だと
+     *   「返信3件」が静かに「返信2件」に減る（behavior.md 1-4）
+     * - 投稿者名とアバターを出すので user を先読みする（N+1 を避ける）
+     */
+    public function timeline(): HasMany
+    {
+        return $this->messages()
+            ->withTrashed()
+            ->whereNull('parent_id')
+            ->with('user')
+            ->withCount(['replies' => function (Builder $query) {
+                $query->withTrashed();
+            }])
+            ->oldest()
+            ->orderBy('id');
+    }
 }
