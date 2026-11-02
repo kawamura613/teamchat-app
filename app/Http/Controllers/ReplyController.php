@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ValidatesMessageBody;
 use App\Models\Message;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,6 +21,8 @@ use Illuminate\Support\Facades\Validator;
  */
 class ReplyController extends Controller
 {
+    use ValidatesMessageBody;
+
     public function store(Request $request, Message $message): RedirectResponse
     {
         // 見られないチャンネルへの返信はここで 404（permissions-api.md 1-5）。
@@ -35,7 +38,8 @@ class ReplyController extends Controller
         // SC-07 には name="body" の欄が3種類（左の投稿欄＝default・編集中＝edit・
         // 返信欄＝reply）あるので、**袋を reply に分ける**。分けないと、別の欄に
         // 打った下書きがこちらへ流れ込む（単位4 が編集中で踏んだのと同じ穴）。
-        // 文言は検査のそば（validate の第2引数にあたる位置）に置く（CLAUDE.md）
+        // ルールと文言は ValidatesMessageBody。メッセージと**同じチェックを
+        // 同じ数だけ**かける（screens.md 4-6 / T-5-10）
         $validator = Validator::make($request->all(), $this->rules(), $this->messages());
 
         if ($validator->fails()) {
@@ -59,42 +63,5 @@ class ReplyController extends Controller
         return redirect()->to(
             route('messages.show', $message->getKey()).'#message-'.$返信->getKey()
         );
-    }
-
-    /**
-     * 返信の入力チェック（screens.md 4-6）。
-     *
-     * **新しく書くときと同じチェックを、同じ数だけ**かける（screens.md 4-6 が
-     * SC-06 と SC-07 に同じ8行を並べている。T-5-10 がその数を見る）。
-     *
-     * 前後の空白と改行は TrimStrings が落とし、空になった値は
-     * ConvertEmptyStringsToNull が null にするので required で弾ける。上限も
-     * その後の字数で数え、保存もその値（screens.md 4-1 / behavior.md 3-8）。
-     *
-     * いまは MessageController と同じものが2か所にある。**次のコミットで
-     * `Concerns\ValidatesMessageBody` に寄せて1か所にする**（置き場は
-     * behavior.md 3-8 の表どおり、コントローラ側のまま）。
-     *
-     * @return array<string, array<int, string>>
-     */
-    private function rules(): array
-    {
-        return [
-            // bail を先頭に置く。無いと required と max のエラー文が同時に出る
-            'body' => ['bail', 'required', 'string', 'max:1000'],
-        ];
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function messages(): array
-    {
-        return [
-            'body.required' => 'メッセージを入力してください',
-            // 配列などが送られてきたときも欄の文言を出す（screens.md 4-1）
-            'body.string' => 'メッセージを入力してください',
-            'body.max' => 'メッセージは1,000文字以内で入力してください',
-        ];
     }
 }

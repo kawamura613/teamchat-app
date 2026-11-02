@@ -15,9 +15,9 @@ use Tests\TestCase;
  *
  * 並びは acceptance.md 3-4 のテスト観点（T-4-01〜T-4-23）に合わせる。
  *
- * 単位4 では判定できないもの:
- * - T-4-20 の「一覧とスレッドが同じ部品を通る」のスレッド側（SC-07 が単位5）
- * - T-4-21 の「スレッドから消したらスレッド」（同じ理由）
+ * 単位4 では判定できなかったものは、単位5 で ThreadTest に入れた:
+ * - T-4-20 の「一覧とスレッドが同じ部品を通る」のスレッド側
+ * - T-4-21 の「スレッドから消したらスレッド」
  */
 class MessageTest extends TestCase
 {
@@ -156,7 +156,10 @@ class MessageTest extends TestCase
         // 跡地は残る。その行には編集・ごみ箱を出さない（AC-4-3）
         $response->assertSee('このメッセージは削除されました', false);
         $response->assertDontSee(route('messages.edit', $message), false);
-        $response->assertDontSee(route('messages.destroy', $message), false);
+        // ごみ箱は**フォームの action** で見る。単位5 で返信アイコンが
+        // messages.show のリンクになり、URL の文字列が destroy と同じに
+        // なった（GET と DELETE で同じ /messages/{id}）
+        $response->assertDontSee('action="'.route('messages.destroy', $message).'"', false);
 
         // 本文はデータベースに残っている（決定1・案1）
         $this->assertSame($消した本文, Message::withTrashed()->sole()->body);
@@ -170,11 +173,14 @@ class MessageTest extends TestCase
         $this->assertStringContainsString('trashed()', $部品);
         $this->assertStringContainsString('このメッセージは削除されました', $部品);
 
-        // 一覧はこの部品を通る。SC-07 も同じ部品を通す（単位5）
-        $一覧 = file_get_contents(resource_path('views/channels/show.blade.php'));
-        $this->assertStringContainsString("@include('messages.partials.message'", $一覧);
-        $this->assertStringNotContainsString('このメッセージは削除されました', $一覧);
-        $this->assertStringNotContainsString('trashed', $一覧);
+        // 一覧（SC-06）もスレッドのパネル（SC-07）も、同じ部品を通る。
+        // **どちらの画面側にも出し分けを書き写さない**（単位5 で SC-07 を足した）
+        foreach (['channels/partials/main', 'messages/partials/thread'] as $画面) {
+            $中身 = file_get_contents(resource_path("views/{$画面}.blade.php"));
+            $this->assertStringContainsString("@include('messages.partials.message'", $中身);
+            $this->assertStringNotContainsString('このメッセージは削除されました', $中身);
+            $this->assertStringNotContainsString('trashed', $中身);
+        }
     }
 
     public function test_投稿欄は書ける人にだけ出て見られないチャンネルへの投稿は404(): void
@@ -315,22 +321,6 @@ class MessageTest extends TestCase
         $this->assertSame('元の本文', $message->fresh()->body);
     }
 
-    public function test_返信に対する編集と削除は3本そろって404になる(): void
-    {
-        // behavior.md 4-2。出す先の SC-07 が単位5 なので 3 本で揃える。1 本だけ
-        // 404 にすると、落ちたときの戻り先が 404 になって打った内容が消える
-        $親 = $this->makeMessage($this->公開チャンネル, ['body' => '親の本文']);
-        $返信 = $this->makeMessage($this->公開チャンネル, ['parent_id' => $親->id, 'body' => '返信の本文']);
-
-        $this->actingAs($this->作成者)->get(route('messages.edit', $返信))->assertNotFound();
-        $this->actingAs($this->作成者)->patch(route('messages.update', $返信), ['body' => '直した本文'])->assertNotFound();
-        $this->actingAs($this->作成者)->delete(route('messages.destroy', $返信))->assertNotFound();
-
-        $返信->refresh();
-        $this->assertSame('返信の本文', $返信->body);
-        $this->assertNull($返信->deleted_at);
-    }
-
     public function test_書き換えて空にして保存しても削除にならず編集中のまま残る(): void
     {
         // T-4-08（screens.md 4-6）。消すときはごみ箱を使う
@@ -445,7 +435,8 @@ class MessageTest extends TestCase
         // 画面にもホバーの編集・ごみ箱は出ない。返信のアイコンだけ残る（AC-4-4）
         $response = $this->actingAs($this->見られる人)->get(route('channels.show', $this->公開チャンネル));
         $response->assertDontSee(route('messages.edit', $message), false);
-        $response->assertDontSee(route('messages.destroy', $message), false);
+        // ごみ箱はフォームの action で見る（上と同じ事情）
+        $response->assertDontSee('action="'.route('messages.destroy', $message).'"', false);
         $response->assertSee('title="返信"', false);
 
         $message->refresh();

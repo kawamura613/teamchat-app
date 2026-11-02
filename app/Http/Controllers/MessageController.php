@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ValidatesMessageBody;
 use App\Models\Channel;
 use App\Models\Message;
 use Illuminate\Http\RedirectResponse;
@@ -11,6 +12,8 @@ use Illuminate\View\View;
 
 class MessageController extends Controller
 {
+    use ValidatesMessageBody;
+
     /**
      * F-14 メッセージ投稿（列C）。
      *
@@ -68,14 +71,14 @@ class MessageController extends Controller
     /**
      * F-15 その場で書き換えるときの入口（列D ＋ △3 / behavior.md 4-2）。
      *
-     * 新しい画面ではなく、SC-06 のその1件だけを編集中にして返す。
+     * 新しい画面ではない。**返信でないメッセージなら SC-06、返信なら SC-07** を
+     * 出して、その1件だけを編集中にする（まわりのメッセージはそのまま）。
      */
     public function edit(Message $message): View
     {
-        $this->abortIfReply($message);
         $this->authorize('update', $message);
 
-        return $this->screen($message->channel, $message->getKey());
+        return $this->screenFor($message, $message->getKey());
     }
 
     /**
@@ -83,13 +86,12 @@ class MessageController extends Controller
      */
     public function update(Request $request, Message $message): RedirectResponse
     {
-        $this->abortIfReply($message);
         $this->authorize('update', $message);
 
         // $request->validate() だと落ちたときに直前の URL（SC-06）へ戻り、
         // 編集中の状態が消える。messages.edit へ戻すために自分で組む
         // （screens.md 4-6「編集中のまま残す」/ behavior.md 4-2）。
-        // 文言は検査のそばに置く（CLAUDE.md）
+        // ルールと文言は ValidatesMessageBody（返信と同じ1か所・screens.md 4-6）
         $validator = Validator::make($request->all(), $this->rules(), $this->messages());
 
         if ($validator->fails()) {
@@ -115,7 +117,6 @@ class MessageController extends Controller
      */
     public function destroy(Request $request, Message $message): RedirectResponse
     {
-        $this->abortIfReply($message);
         $this->authorize('delete', $message);
 
         // deleted_at を立てるだけ。body にも parent_id の返信にも触らない
@@ -128,29 +129,36 @@ class MessageController extends Controller
     }
 
     /**
-     * 返信に対する編集・削除は、SC-07 の Blade ができるまで 404（behavior.md 4-2）。
+     * 編集中の1件を抱えた画面を返す（behavior.md 4-2）。
      *
-     * 出す先の画面（`messages/show.blade.php`）がまだ無いので、edit・update・
-     * destroy の **3 本そろって** 404 を返す。1 本だけ 404 にすると、入力チェックに
-     * 落ちたときの戻り先（messages.edit）が 404 になって、打った内容が消える。
+     * **返信でないメッセージなら SC-06、返信なら SC-07。**どちらも「新しい画面」
+     * ではなく、SC-06・SC-07 の中の状態なので SC番号は増えない。
      *
-     * これは「出す先が無い」ことによる 404 なので、**authorize より先に**見る。
+     * チャンネルは `$message->channel` から取る。ここへ来る前に
+     * `authorize('update', …)` が `ChannelPolicy@view` を通しているので、
+     * 「見られるか」はもう済んでいる（permissions-api.md 1-6）。
      *
-     * **設計書（behavior.md 4-2）はもう外したあとの記述になっている。**SC-07 の
-     * Blade を足す次のコミットで、この 3 か所の呼び出しとこのメソッドを消し、
-     * `edit()` が返信なら `threadScreen()` を返すようにして食い違いを閉じる。
+     * 親は `withTrashed()` で引く。削除済みの親にぶら下がった返信を編集中に
+     * するとき、既定のままだと親が解決できない（決定1 の出口1-b と同じ事情）。
      */
-    private function abortIfReply(Message $message): void
+    private function screenFor(Message $message, ?int $editingId): View
     {
-        abort_if($message->parent_id !== null, 404);
+        if ($message->parent_id === null) {
+            return $this->screen($message->channel, $editingId);
+        }
+
+        return $this->threadScreen(
+            $message->channel,
+            $message->parent()->withTrashed()->sole(),
+            $editingId
+        );
     }
 
     /**
      * SC-06 を組む。`ChannelController@show` と同じ中身で、1件だけ編集中にする。
      *
      * **view に渡す鍵はここと `ChannelController@show` の 2 か所にある。**
-     * 片方だけ増やすと、もう片方の経路で「変数が無い」で落ちる（単位5 で
-     * スレッドの鍵を足すときに効く）。
+     * 片方だけ増やすと、もう片方の経路で「変数が無い」で落ちる。
      */
     private function screen(Channel $channel, ?int $editingId): View
     {
@@ -207,35 +215,5 @@ class MessageController extends Controller
         }
 
         return redirect()->to(route('channels.show', $message->channel_id).$錨);
-    }
-
-    /**
-     * 投稿とその場で書き換えるときの入力チェック（screens.md 4-6）。
-     *
-     * 前後の空白と改行は TrimStrings が落とし、空になった値は
-     * ConvertEmptyStringsToNull が null にするので required で弾ける。
-     * 上限もその後の字数で数える（screens.md 4-1 / behavior.md 3-8）。
-     *
-     * @return array<string, array<int, string>>
-     */
-    private function rules(): array
-    {
-        return [
-            // bail を先頭に置く。無いと required と max のエラー文が同時に出る
-            'body' => ['bail', 'required', 'string', 'max:1000'],
-        ];
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function messages(): array
-    {
-        return [
-            'body.required' => 'メッセージを入力してください',
-            // 配列などが送られてきたときも欄の文言を出す（screens.md 4-1）
-            'body.string' => 'メッセージを入力してください',
-            'body.max' => 'メッセージは1,000文字以内で入力してください',
-        ];
     }
 }

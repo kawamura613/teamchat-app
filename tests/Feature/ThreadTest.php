@@ -14,17 +14,12 @@ use Tests\TestCase;
  *
  * 並びは acceptance.md 3-5 のテスト観点（T-5-01〜T-5-12）に合わせる。
  *
- * **このコミットの時点では SC-07 の Blade（`messages/show.blade.php`）がまだ無い。**
- * そのため、画面を描かずに判定できる観点だけを先に置いてある。描いてから判定する
- * ものは、SC-07 を足す次のコミットでここに足す:
- * - T-5-01・T-5-02（「返信◯件」がリンクで出る／削除済みでも消えない）
- * - T-5-03（返信件数に削除済みの返信を含める。Channel@timeline() を
- *   Message::replyCount() に寄せるのも次のコミット）
- * - T-5-04（スレッドが開ける・× が SC-06 を指す）の 200 側
- * - T-5-05（削除済みの親で開いて本文が出ない。出口1-b）
- * - T-5-11（自分の返信は編集・削除でき、他人の返信にはアイコンが出ない）
- * - 出口1-c（削除した返信の跡地が出て件数が減らない）
- * - T-4-20 のスレッド側（出し分けが部品1か所）
+ * 「出ていないこと」で書く観点（決定1 の出口1-b・1-c）は、**跡地の文言が出て
+ * いること**ではなく**元の本文が1文字も出ていないこと**で見る（acceptance.md 3-8）。
+ * 出口ごとに独立に落ちるよう、1つのテストで兼ねない。
+ *
+ * T-4-20（出し分けが部品1か所に閉じている）の構造の確認は MessageTest にある。
+ * ここはその振る舞い側（スレッドを通しても本文が出ない）を見る。
  */
 class ThreadTest extends TestCase
 {
@@ -58,6 +53,93 @@ class ThreadTest extends TestCase
     }
 
     // 見る
+
+    public function test_返信件数は1件以上のときだけリンクで出る(): void
+    {
+        // T-5-01（screens.md 3-3）。0件では出さない。単位4 では押せない印だったが、
+        // 単位5 で行き先（SC-07）ができたのでリンクにする
+        $返信なし = $this->makeMessage($this->公開チャンネル, ['body' => '返信なしの本文']);
+
+        $response = $this->actingAs($this->作成者)->get(route('channels.show', $this->公開チャンネル));
+        $response->assertOk();
+        $response->assertDontSee('class="thread-link"', false);
+
+        $this->makeMessage($this->公開チャンネル, ['parent_id' => $返信なし->id, 'body' => '返信の本文']);
+
+        $response = $this->actingAs($this->作成者)->get(route('channels.show', $this->公開チャンネル));
+        $response->assertSee('<a class="thread-link" href="'.route('messages.show', $返信なし).'"', false);
+        $response->assertSee('返信1件', false);
+    }
+
+    public function test_削除されたメッセージでも返信件数は消えない(): void
+    {
+        // T-5-02（design-guide.md 4「返信は残るので、返信件数の表示も消さない」/
+        // behavior.md 1-4）。跡地にも押せるリンクが残る
+        $親 = $this->makeMessage($this->公開チャンネル, [
+            'body' => '消えた親の本文',
+            'deleted_at' => now(),
+        ]);
+        $this->makeMessage($this->公開チャンネル, ['parent_id' => $親->id, 'body' => '返信の本文']);
+
+        $response = $this->actingAs($this->作成者)->get(route('channels.show', $this->公開チャンネル));
+
+        $response->assertSee('このメッセージは削除されました', false);
+        $response->assertSee('<a class="thread-link" href="'.route('messages.show', $親).'"', false);
+        $response->assertSee('返信1件', false);
+        $response->assertDontSee('消えた親の本文', false);
+    }
+
+    public function test_返信件数に削除済みの返信も入る(): void
+    {
+        // T-5-03（Q-23 の想定 / behavior.md 1-4）。**withTrashed() を忘れると
+        // 静かに1つ減る。**スレッドを開いたときに並ぶ数と表示を一致させる
+        $親 = $this->makeMessage($this->公開チャンネル, ['body' => '親の本文']);
+        $this->makeMessage($this->公開チャンネル, ['parent_id' => $親->id, 'body' => '生きた返信']);
+        $this->makeMessage($this->公開チャンネル, [
+            'parent_id' => $親->id,
+            'body' => '消えた返信',
+            'deleted_at' => now(),
+        ]);
+
+        $this->actingAs($this->作成者)
+            ->get(route('channels.show', $this->公開チャンネル))
+            ->assertSee('返信2件', false);
+    }
+
+    public function test_スレッドが開いて元のメッセージと返信が並ぶ(): void
+    {
+        // T-5-04・AC-5-1（screens.md 3-5 / Q-24 の想定）。それ自身の URL を持つ
+        // 画面なので、同じアドレスで開き直しても同じスレッドが出る
+        $親 = $this->makeMessage($this->公開チャンネル, ['body' => '元のメッセージの本文']);
+        foreach (['一つめの返信', '二つめの返信', '三つめの返信'] as $分 => $本文) {
+            $this->makeMessage($this->公開チャンネル, [
+                'parent_id' => $親->id,
+                'body' => $本文,
+                'created_at' => sprintf('2026-08-17 10:%02d', 10 + $分),
+            ]);
+        }
+
+        $response = $this->actingAs($this->作成者)->get(route('messages.show', $親));
+        $response->assertOk();
+
+        // 右に 400px のパネルが開く形（mockup の .app__body--thread）
+        $response->assertSee('app__body--thread', false);
+        $response->assertSee('<div class="t-label">スレッド</div>', false);
+        // パネルの頭の所属（記号＋チャンネル名）
+        $response->assertSee('<div class="t-caption"><span class="sig">#</span>開発</div>', false);
+        // 元のメッセージ・区切り・返信
+        $response->assertSee('元のメッセージの本文', false);
+        $response->assertSee('class="thread__count">返信3件<', false);
+        // 返信の投稿欄（プレースホルダは screens.md 3-5）
+        $response->assertSee('placeholder="返信を送る"', false);
+        // × は SC-06 の、開く前に見ていた位置へ（behavior.md 4-4）
+        $response->assertSee('href="'.route('channels.show', $this->公開チャンネル->id).'#message-'.$親->id.'" title="閉じる"', false);
+
+        // 返信は古い順に並ぶ
+        $本文 = $response->getContent();
+        $this->assertLessThan(mb_strpos($本文, '二つめの返信'), mb_strpos($本文, '一つめの返信'));
+        $this->assertLessThan(mb_strpos($本文, '三つめの返信'), mb_strpos($本文, '二つめの返信'));
+    }
 
     public function test_見られないチャンネルのスレッドは見つかりませんになる(): void
     {
@@ -94,6 +176,76 @@ class ThreadTest extends TestCase
         $this->actingAs($this->見られない人)
             ->get(route('messages.show', $返信))
             ->assertNotFound();
+    }
+
+    public function test_削除されたメッセージのスレッドも開いて本文は出ない(): void
+    {
+        // T-5-05・AC-5-3（決定1 の出口1-b / permissions-api.md 2-2）。
+        // messages.show だけ ->withTrashed() にしてあるので 404 にならない。
+        // **跡地が出ていること**ではなく**本文が出ていないこと**で見る
+        $消した本文 = '消した親の本文はデータベースにだけ残る';
+        $親 = $this->makeMessage($this->公開チャンネル, ['body' => $消した本文, 'deleted_at' => now()]);
+        $this->makeMessage($this->公開チャンネル, ['parent_id' => $親->id, 'body' => '跡地への返信']);
+
+        $response = $this->actingAs($this->作成者)->get(route('messages.show', $親));
+
+        $response->assertOk();
+        $response->assertDontSee($消した本文, false);
+        $response->assertSee('このメッセージは削除されました', false);
+        // 投稿者名・日時は跡地にも残る（behavior.md 1-2）
+        $response->assertSee('佐藤 太郎', false);
+        $response->assertSee('跡地への返信', false);
+        // そのまま返信を続けられる。投稿欄は出したまま（回答6）
+        $response->assertSee('placeholder="返信を送る"', false);
+
+        // 本文はデータベースに残っている（決定1・案1）
+        $this->assertSame($消した本文, Message::withTrashed()->find($親->id)->body);
+    }
+
+    public function test_削除された返信はスレッドで跡地になり本文は出ない(): void
+    {
+        // 出口1-c・AC-5-4（決定1）。**出口1-b とは別のテストにする。**1つで兼ねると
+        // どちらが緩んだのか分からなくなる（acceptance.md 3-8）
+        $消した本文 = '消した返信の本文はデータベースにだけ残る';
+        $親 = $this->makeMessage($this->公開チャンネル, ['body' => '親の本文']);
+        $this->makeMessage($this->公開チャンネル, ['parent_id' => $親->id, 'body' => '生きた返信']);
+        $消えた返信 = $this->makeMessage($this->公開チャンネル, [
+            'parent_id' => $親->id,
+            'body' => $消した本文,
+            'deleted_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->作成者)->get(route('messages.show', $親));
+
+        $response->assertOk();
+        $response->assertDontSee($消した本文, false);
+        $response->assertSee('このメッセージは削除されました', false);
+        $response->assertSee('生きた返信', false);
+        // 件数は減らない。並ぶ数（跡地を含めて2件）と一致する
+        $response->assertSee('class="thread__count">返信2件<', false);
+
+        $this->assertSame($消した本文, Message::withTrashed()->find($消えた返信->id)->body);
+    }
+
+    public function test_パネルの中には返信アイコンも返信件数も出ない(): void
+    {
+        // screens.md 3-5（2026-11-02 に足した行）。元のメッセージは行き先が
+        // 自分自身のスレッドになり、返信は1段までで付けられない（回答8）
+        $親 = $this->makeMessage($this->公開チャンネル, ['body' => '親の本文']);
+        $this->makeMessage($this->公開チャンネル, ['parent_id' => $親->id, 'body' => '返信の本文']);
+
+        $response = $this->actingAs($this->作成者)->get(route('messages.show', $親));
+        $response->assertOk();
+
+        // 左の一覧には両方出る
+        $response->assertSee('title="返信"', false);
+        $response->assertSee('class="thread-link"', false);
+
+        // パネルの中（<aside class="thread"> から後ろ）には出ない
+        $本文 = $response->getContent();
+        $パネル = mb_substr($本文, mb_strpos($本文, '<aside class="thread">'));
+        $this->assertStringNotContainsString('title="返信"', $パネル);
+        $this->assertStringNotContainsString('thread-link', $パネル);
     }
 
     // 送る
@@ -133,9 +285,9 @@ class ThreadTest extends TestCase
 
     public function test_削除されたメッセージにも返信できて件数が増える(): void
     {
-        // T-5-06（回答6 / questions.md 決定1 の出口1-d）。そこで会話が続けられ
-        // なくなるほうが困る、という回答に乗っている。親は withTrashed() の
-        // バインディングで解決され、MessagePolicy@reply は trashed() を見ない
+        // T-5-06（回答6 / 決定1 の出口1-d）。そこで会話が続けられなくなるほうが
+        // 困る、という回答に乗っている。親は withTrashed() のバインディングで
+        // 解決され、MessagePolicy@reply は trashed() を見ない
         $親 = $this->makeMessage($this->公開チャンネル, [
             'body' => '消えた親の本文',
             'deleted_at' => now(),
@@ -182,8 +334,9 @@ class ThreadTest extends TestCase
     public function test_返信も本文は空で弾かれ1000文字は通り1001文字で弾かれる(): void
     {
         // T-5-10（screens.md 4-6 / Q-25 の想定）。メッセージと同じチェックを
-        // 同じ数だけかける。エラーは reply の袋に入れる（SC-07 には name="body" の
-        // 欄が3種類あるので、袋を共有すると別の欄の下書きが流れ込む）
+        // 同じ数だけかける（ValidatesMessageBody 1 か所を通す）。エラーは reply の
+        // 袋に入れる（SC-07 には name="body" の欄が3種類あるので、袋を共有すると
+        // 別の欄の下書きが流れ込む）
         $親 = $this->makeMessage($this->公開チャンネル, ['body' => '親の本文']);
 
         $this->postReply($親, ['body' => ''])
@@ -216,16 +369,71 @@ class ThreadTest extends TestCase
         );
     }
 
-    public function test_入力チェックに落ちた返信は同じスレッドへ戻る(): void
+    public function test_入力チェックに落ちた返信は同じスレッドへ戻り返信欄にエラーが出る(): void
     {
-        // screens.md 4-6。返信欄の下にエラー文を出すので、戻り先は SC-07
+        // screens.md 4-6。エラー文は返信欄の下・文字数表示の左に出す
         $親 = $this->makeMessage($this->公開チャンネル, ['body' => '親の本文']);
 
         $this->postReply($親, ['body' => ''])
             ->assertRedirect(route('messages.show', $親));
+
+        $response = $this->actingAs($this->作成者)
+            ->followingRedirects()
+            ->post(route('messages.replies.store', $親), ['body' => '']);
+
+        $response->assertOk();
+        $response->assertSee('<span class="err">メッセージを入力してください</span>', false);
+        // 返信欄の枠が赤くなる（screens.md 4-1 / app.css の .composer__box.is-error）
+        $response->assertSee('class="composer__box is-error"', false);
     }
 
     // 消す
+
+    public function test_自分の返信は直せて他人の返信には操作が出ない(): void
+    {
+        // T-5-11（Q-25 の想定 / screens.md 3-5）。返信もメッセージと同じ扱いで、
+        // 「編集済み」も跡地も同じように出る。単位4 では3本そろって 404 だった
+        $親 = $this->makeMessage($this->公開チャンネル, ['body' => '親の本文']);
+        $自分の返信 = $this->makeMessage($this->公開チャンネル, ['parent_id' => $親->id, 'body' => '自分の返信']);
+        $他人の返信 = $this->makeMessage($this->公開チャンネル, [
+            'parent_id' => $親->id,
+            'body' => '他人の返信',
+            'user_id' => $this->見られる人->id,
+        ]);
+
+        // 返信の編集中は SC-07 の中の状態。SC番号は増えない（behavior.md 4-2）
+        $編集中 = $this->actingAs($this->作成者)->get(route('messages.edit', $自分の返信));
+        $編集中->assertOk();
+        $編集中->assertSee('app__body--thread', false);
+        $編集中->assertSee('id="message-body-'.$自分の返信->id.'"', false);
+
+        $this->actingAs($this->作成者)
+            ->patch(route('messages.update', $自分の返信), ['body' => '直した返信', 'from' => 'thread'])
+            ->assertRedirect(route('messages.show', $親->id).'#message-'.$自分の返信->id);
+
+        $自分の返信->refresh();
+        $this->assertSame('直した返信', $自分の返信->body);
+        $this->assertNotNull($自分の返信->edited_at);
+
+        // 他人の返信は 403（そのメッセージは本人のパネルに並んでいる）
+        $this->actingAs($this->作成者)->get(route('messages.edit', $他人の返信))->assertForbidden();
+        $this->actingAs($this->作成者)->patch(route('messages.update', $他人の返信), ['body' => 'x'])->assertForbidden();
+        $this->actingAs($this->作成者)->delete(route('messages.destroy', $他人の返信))->assertForbidden();
+
+        // 画面にも他人の返信の操作は出ない（screens.md 4-9）
+        $response = $this->actingAs($this->作成者)->get(route('messages.show', $親));
+        $response->assertDontSee(route('messages.edit', $他人の返信), false);
+        $response->assertDontSee('action="'.route('messages.destroy', $他人の返信).'"', false);
+        $response->assertSee(route('messages.edit', $自分の返信), false);
+
+        // 自分の返信は削除できて、跡地になる
+        $this->actingAs($this->作成者)
+            ->delete(route('messages.destroy', $自分の返信), ['from' => 'thread'])
+            ->assertRedirect(route('messages.show', $親->id).'#message-'.$自分の返信->id);
+
+        $this->assertNotNull($自分の返信->fresh()->deleted_at);
+        $this->assertSame('他人の返信', $他人の返信->fresh()->body);
+    }
 
     public function test_スレッドから消すとスレッドへ戻り一覧から消すと一覧へ戻る(): void
     {
@@ -268,6 +476,18 @@ class ThreadTest extends TestCase
         $this->assertSame('2026/08/17 09:12', $親->created_at->format('Y/m/d H:i'));
         $this->assertNull($親->edited_at);
         $this->assertNull($親->deleted_at);
+    }
+
+    public function test_スレッドでもサイドバーのそのチャンネルが選択中になる(): void
+    {
+        // permissions-api.md 1-6（2026-11-02 の追記）。messages.show には
+        // {channel} が無いので、{message} が属するチャンネルを見ないと
+        // 選択中の行が消える。判定は AppServiceProvider の View Composer
+        $親 = $this->makeMessage($this->公開チャンネル, ['body' => '親の本文']);
+
+        $this->actingAs($this->作成者)
+            ->get(route('messages.show', $親))
+            ->assertSee('class="side-item is-selected" href="'.route('channels.show', $this->公開チャンネル).'"', false);
     }
 
     private function makeChannel(array $差分 = []): Channel

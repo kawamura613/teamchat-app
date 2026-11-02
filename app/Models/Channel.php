@@ -66,8 +66,10 @@ class Channel extends Model
      * - 返信は一覧に流さないので parent_id が NULL の行だけ（data.md 2-4）
      * - 並びは古い順（回答7）。同じ時刻のときは id で並び順を決める
      * - 跡地を出すために削除済みも取ってくる（questions.md 決定1 の出口1）
-     * - 返信件数は削除済みの親・子を含めて数える。withCount の既定だと
-     *   「返信3件」が静かに「返信2件」に減る（behavior.md 1-4）
+     * - 返信件数は削除済みの親・子を含めて数える。数え方は
+     *   Message::replyCount() 1 か所に置いてあり、スレッド（loadCount）と
+     *   同じものを通す。既定だと「返信3件」が静かに「返信2件」に減る
+     *   （behavior.md 1-4）
      * - 投稿者名とアバターを出すので user を先読みする（N+1 を避ける）
      */
     public function timeline(): HasMany
@@ -76,9 +78,7 @@ class Channel extends Model
             ->withTrashed()
             ->whereNull('parent_id')
             ->with('user')
-            ->withCount(['replies' => function (Builder $query) {
-                $query->withTrashed();
-            }])
+            ->withCount(Message::replyCount())
             ->oldest()
             ->orderBy('id');
     }

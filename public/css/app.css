@@ -380,12 +380,6 @@ mark{background:#FBEBBD;color:inherit;border-radius:2px;padding:0 1px}
 /* 着地した1件の強調（behavior.md 4-4）。色は一致部分の強調と同じに揃える */
 .msg:target{background:#FBEBBD}
 
-/* 返信アイコンが押せないことの見た目（behavior.md 4-1 の (8)）。単位4 では
-   行き先の SC-07 が無い。.icon-btn の cursor:pointer とホバーの地を打ち消して、
-   押せそうに見えないようにする。単位5 でリンクにすると当たらなくなる */
-.icon-btn[aria-disabled="true"]{cursor:default;color:var(--text-disabled)}
-.icon-btn[aria-disabled="true"]:hover{background:transparent;color:var(--text-disabled)}
-
 /* 投稿欄がエラーのときの枠と地（screens.md 4-1）。投稿欄は .field の外にあるので
    .field.is-error の規則が当たらない。値は .field.is-error と同じ */
 .composer__box.is-error{border-color:var(--danger);background:var(--danger-soft)}

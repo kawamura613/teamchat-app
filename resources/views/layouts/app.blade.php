@@ -31,7 +31,8 @@
             </form>
         </div>
     </header>
-    <div class="app__body">
+    {{-- SC-07 だけ app__body--thread で3列（サイドバー｜本文｜パネル）にする --}}
+    <div class="app__body @yield('body-modifier')">
         <nav class="sidebar">
             <div class="side-group">チャンネル</div>
             @foreach ($sidebarChannels as $sidebarChannel)
@@ -50,6 +51,9 @@
             @endif
             @yield('content')
         </main>
+        {{-- スレッドのパネルは .main の外・.app__body の中（mockup/thread.html
+             どおり）。SC-07 以外は何も出ない --}}
+        @yield('aside')
     </div>
 </div>
 </body>
