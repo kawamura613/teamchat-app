@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Http\Requests\LoginRequest;
 use App\Models\Channel;
+use App\Models\Message;
 use Illuminate\Contracts\View\View as ViewContract;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\View;
@@ -39,9 +40,30 @@ class AppServiceProvider extends ServiceProvider
                 // 並びは作成された順（questions.md Q-06 の想定）
                 'sidebarChannels' => $view->getData()['sidebarChannels']
                     ?? Channel::visibleTo(Auth::user())->orderBy('id')->get(),
-                // 選択中は URL の {channel} で見る。SC-05・SC-06・SC-10 で付く
-                'selectedChannelId' => request()->route('channel'),
+                'selectedChannelId' => $this->selectedChannelId(),
             ]);
         });
+    }
+
+    /**
+     * サイドバーで選択中にする行（screens.md 3-1 / permissions-api.md 1-6）。
+     *
+     * URL の {channel} で決める（SC-03 以外の画面で付く）。メッセージ1件に
+     * 対する URL には {channel} が無いので、そこは {message} が属する
+     * チャンネルを見る（SC-06 の編集中＝messages.edit・単位5 の SC-07）。
+     * {channel} だけを見ていると、その2つで選択中の行が消える。
+     *
+     * ここで「見られるか」は見ない。画面を出す前にコントローラーと
+     * MessagePolicy が済ませている（permissions-api.md 1-5）。
+     */
+    private function selectedChannelId(): int|string|null
+    {
+        if ($channel = request()->route('channel')) {
+            return $channel;
+        }
+
+        $message = request()->route('message');
+
+        return $message instanceof Message ? $message->channel_id : null;
     }
 }

@@ -291,6 +291,22 @@ class MessageTest extends TestCase
         $this->assertNull($message->edited_at);
     }
 
+    public function test_編集中のアドレスで開いてもサイドバーの行が選択中になる(): void
+    {
+        // screens.md 3-1 の「選択中の強調」。messages.edit には {channel} が
+        // 無いので、{message} が属するチャンネルで決める（permissions-api.md 1-6）
+        $message = $this->makeMessage($this->公開チャンネル, ['body' => '元の本文']);
+
+        $this->actingAs($this->作成者)->get(route('channels.show', $this->公開チャンネル))
+            ->assertSee('class="side-item is-selected"', false);
+
+        $response = $this->actingAs($this->作成者)->get(route('messages.edit', $message));
+        $response->assertOk();
+        $response->assertSee('class="side-item is-selected"', false);
+        // 光るのは1行だけ
+        $this->assertSame(1, mb_substr_count($response->getContent(), 'is-selected'));
+    }
+
     public function test_編集済みの印は一度付いたら消えない(): void
     {
         // T-4-10（回答5 / behavior.md 1-3 の遷移4）
