@@ -46,6 +46,7 @@ Tutorial 16「総仕上げ」のチームチャットアプリ。素の Laravel 
     - SC-01 ログイン: `app/Http/Requests/LoginRequest.php` の `messages()`（Fortify の `LoginRequest` に `messages()` が無いため、継承して container で差し替えている）
 - ログイン失敗の「メールアドレスまたはパスワードが正しくありません」だけは別口。`app/Actions/Fortify/AttemptToAuthenticate.php` で**パスワード欄に**投げる（Fortify の既定はメールアドレス欄に英語で出す）。
 - `config/app.php` の `locale` は `en` で `lang/ja` も無いため、メッセージを指定していない項目は英語の既定文言になる。検証ルールを足すときは日本語メッセージも必ず付ける（**文言は `docs/design/screens.md` 4 章が正。エラー文は句点なしの 1 文**）。
+- テストの日本語メソッド名に**アルファベットの大文字を交ぜない**。`POST` や `URL` のように書くと、Pint の自動整形（`php_unit_method_casing`）が `test_ログアウトは_pos_tだけで効く` のようにアンダースコアを差し込んで壊す。**カタカナ（ポスト・アドレス）にするか、すべて小文字で書く**。
 - ビューが関連モデルを引くときは、コントローラーで `with()` / `load()` を付けて先読みする（N+1 を避ける）。
 
 ## 守ってほしい書き方
