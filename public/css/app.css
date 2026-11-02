@@ -363,3 +363,8 @@ mark{background:#FBEBBD;color:inherit;border-radius:2px;padding:0 1px}
 /* 上部バーのアプリ名はチャンネル一覧へのリンク（screens.md 2-3）。
    素の a:hover が藍色＋下線にしてしまい、暗い地の上で読めなくなるので打ち消す */
 .topbar__brand:hover{color:var(--side-text-strong);text-decoration:none}
+
+/* 公開範囲の選択中の強調（SC-04）。モックアップは .radio.is-checked を直書きして
+   いるが、JavaScript を使わないので :checked から同じ見た目を作る
+   （behavior.md 4-1 の (4)。値は .radio.is-checked と同じ） */
+.radio:has(input:checked){border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 1px var(--accent)}
