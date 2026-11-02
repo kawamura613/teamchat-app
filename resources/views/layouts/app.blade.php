@@ -1,6 +1,9 @@
-{{-- 共通の枠（F-04 / screens.md 3-1）。
-     単位1 では上部バーだけ。サイドバーとチャンネル行は単位2、検索窓は単位6 で足す。
-     サイドバーが無いあいだは .app__body（260px 固定の2カラム）を使わない。 --}}
+{{-- 共通の枠（F-04 / screens.md 3-1）。単位2 でサイドバーを足した。
+     上部バーの検索窓は単位6。
+
+     $sidebarChannels と $selectedChannelId は AppServiceProvider の
+     View Composer が渡す（permissions-api.md 1-6）。各コントローラーでは渡さない。
+     選択中は URL の {channel} で見るので、画面側の変数名に左右されない。 --}}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -26,13 +29,24 @@
             </form>
         </div>
     </header>
-    <main class="main main--scroll">
-        @if (session('status'))
-            {{-- 操作が済んだ知らせ（behavior.md 4-6）。出す操作は単位2 から --}}
-            <div class="notice">{{ session('status') }}</div>
-        @endif
-        @yield('content')
-    </main>
+    <div class="app__body">
+        <nav class="sidebar">
+            <div class="side-group">チャンネル</div>
+            @foreach ($sidebarChannels as $sidebarChannel)
+                <a class="side-item{{ (string) $sidebarChannel->id === (string) $selectedChannelId ? ' is-selected' : '' }}" href="{{ route('channels.show', $sidebarChannel) }}"><span class="sig">@include('channels.partials.sign', ['channel' => $sidebarChannel])</span><span class="nm">{{ $sidebarChannel->name }}</span></a>
+            @endforeach
+            <div class="side-foot">
+                <a href="{{ route('channels.index') }}">チャンネル一覧を見る</a>
+            </div>
+        </nav>
+        <main class="main main--scroll">
+            @if (session('status'))
+                {{-- 操作が済んだ知らせ（behavior.md 4-6）。次の遷移で消える --}}
+                <div class="notice">{{ session('status') }}</div>
+            @endif
+            @yield('content')
+        </main>
+    </div>
 </div>
 </body>
 </html>
