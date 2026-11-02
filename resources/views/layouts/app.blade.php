@@ -39,7 +39,9 @@
                 <a href="{{ route('channels.index') }}">チャンネル一覧を見る</a>
             </div>
         </nav>
-        <main class="main main--scroll">
+        {{-- 既定はページごと縦に送る。SC-06 だけは一覧（.msg-list）自身が
+             スクロールするので、画面側から外せるようにしてある --}}
+        <main class="main @yield('main-modifier', 'main--scroll')">
             @if (session('status'))
                 {{-- 操作が済んだ知らせ（behavior.md 4-6）。次の遷移で消える --}}
                 <div class="notice">{{ session('status') }}</div>

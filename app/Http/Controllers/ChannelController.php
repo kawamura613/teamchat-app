@@ -65,11 +65,20 @@ class ChannelController extends Controller
     /**
      * SC-06 チャンネル（F-13・F-14・F-17）。
      *
-     * 単位2 では見出しだけ。メッセージ一覧・投稿欄・ホバー操作は単位4。
+     * 引く中身の決めは Channel@timeline に閉じてある。1件を編集中にして出す
+     * 入口は MessageController@edit（behavior.md 4-2）。
      */
     public function show(Request $request, int $channel): View
     {
-        return view('channels.show', ['channel' => $this->visibleChannel($request, $channel)]);
+        $channel = $this->visibleChannel($request, $channel);
+
+        // 渡す鍵はここと MessageController@screen の 2 か所にある。片方だけ
+        // 増やすと、もう片方の経路で「変数が無い」で落ちる
+        return view('channels.show', [
+            'channel' => $channel,
+            'messages' => $channel->timeline()->get(),
+            'editingId' => null,
+        ]);
     }
 
     /**

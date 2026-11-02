@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ChannelController;
+use App\Http\Controllers\MessageController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -28,7 +29,7 @@ Route::get('/', function () {
 // ルートの時点で 404 にする（behavior.md 3-2「そのURLがない」）。グループに
 // 付けておけば、単位3 で members 系を足したときも自動で効く。
 Route::middleware(['auth', 'cache.headers:no_store;no_cache;must_revalidate;max_age=0'])
-    ->whereNumber('channel')
+    ->whereNumber(['channel', 'message'])
     ->group(function () {
         Route::get('/channels', [ChannelController::class, 'index'])->name('channels.index');
 
@@ -42,4 +43,13 @@ Route::middleware(['auth', 'cache.headers:no_store;no_cache;must_revalidate;max_
         Route::patch('/channels/{channel}', [ChannelController::class, 'update'])->name('channels.update');
         Route::get('/channels/{channel}/delete', [ChannelController::class, 'confirmDelete'])->name('channels.delete');
         Route::delete('/channels/{channel}', [ChannelController::class, 'destroy'])->name('channels.destroy');
+
+        // {message} はルートモデルバインディングで引く。この 3 本は既定のまま
+        // （削除済みを除外）にして、削除済みの編集・再削除をここで 404 にする
+        // （permissions-api.md 2-2 の表 / Q-19）。withTrashed() を付ける
+        // messages.show・messages.replies.store は単位5。
+        Route::post('/channels/{channel}/messages', [MessageController::class, 'store'])->name('channels.messages.store');
+        Route::get('/messages/{message}/edit', [MessageController::class, 'edit'])->name('messages.edit');
+        Route::patch('/messages/{message}', [MessageController::class, 'update'])->name('messages.update');
+        Route::delete('/messages/{message}', [MessageController::class, 'destroy'])->name('messages.destroy');
     });

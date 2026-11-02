@@ -12,8 +12,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  *
  * parent_id が NULL ならメッセージ、値が入っていれば返信。
  *
- * 単位2 では、チャンネル削除の連鎖（T-2-16）と削除の確認に出す件数（T-2-14）に
- * 必要な関連だけを持つ。投稿・一覧・編集・削除は単位4・単位5。
+ * 投稿・一覧・編集・削除は単位4（F-13〜F-16）。返信（parent_id に値が入る行）を
+ * 作る画面は単位5 だが、返信件数の数え方は単位4 で使う（behavior.md 1-4）。
  *
  * 削除しても本文を残すので、deleting で body を触る処理は入れない
  * （questions.md 決定1・案1 / CLAUDE.md）。
