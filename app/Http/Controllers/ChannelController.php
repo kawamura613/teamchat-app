@@ -25,7 +25,12 @@ class ChannelController extends Controller
             ->orderBy('id')
             ->get();
 
-        return view('channels.index', ['channels' => $channels]);
+        // サイドバーも同じ行を出すので、同じ問い合わせを 2 回走らせない。
+        // View Composer は渡されていないときだけ自分で引く（AppServiceProvider）
+        return view('channels.index', [
+            'channels' => $channels,
+            'sidebarChannels' => $channels,
+        ]);
     }
 
     /**
@@ -85,7 +90,10 @@ class ChannelController extends Controller
 
         // 公開範囲は SC-05 に欄が無いので検査しない。送られてきても
         // $validated に入らないため無視される（screens.md 4-4 / questions.md Q-09）
-        $channel->update($this->validateForm($request, $channel));
+        // description は nullable なので、送られてこないとキーが無く、既定では
+        // 前の値が残る。必ず書く値として埋める（画面からは必ず送られるが、
+        // 送らない相手から消せなくなるため）
+        $channel->update($this->validateForm($request, $channel) + ['description' => null]);
 
         return redirect()->route('channels.show', $channel)
             ->with('status', 'チャンネルを保存しました');

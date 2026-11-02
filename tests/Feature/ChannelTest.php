@@ -99,6 +99,34 @@ class ChannelTest extends TestCase
         $this->assertFalse($this->見られない人->can('view', $this->プライベートチャンネル));
     }
 
+    public function test_チャンネルの見出しは作成者にだけ編集と削除が出る(): void
+    {
+        $response = $this->actingAs($this->作成者)->get(route('channels.show', $this->公開チャンネル));
+        $response->assertSee(route('channels.edit', $this->公開チャンネル), false);
+        $response->assertSee(route('channels.delete', $this->公開チャンネル), false);
+
+        // 他人のチャンネルの見出しには編集・削除を出さない（screens.md 4-9）
+        $response = $this->actingAs($this->見られる人)->get(route('channels.show', $this->公開チャンネル));
+        $response->assertOk();
+        $response->assertDontSee(route('channels.edit', $this->公開チャンネル), false);
+        $response->assertDontSee(route('channels.delete', $this->公開チャンネル), false);
+    }
+
+    public function test_一覧は同じ問い合わせを2回走らせない(): void
+    {
+        $本数 = 0;
+        DB::listen(function ($query) use (&$本数) {
+            if (str_contains($query->sql, 'from `channels`')) {
+                $本数++;
+            }
+        });
+
+        $this->actingAs($this->見られる人)->get(route('channels.index'))->assertOk();
+
+        // 一覧とサイドバーが同じ行を使う（permissions-api.md 1-6）
+        $this->assertSame(1, $本数);
+    }
+
     public function test_チャンネルが0件のときに空状態の枠が出る(): void
     {
         Channel::query()->delete();
@@ -246,6 +274,30 @@ class ChannelTest extends TestCase
             ->assertSessionHasErrors(['name' => 'この名前のチャンネルはすでにあります']);
     }
 
+    public function test_作成すると決めた文言の知らせが出てそのチャンネルが開く(): void
+    {
+        $response = $this->actingAs($this->作成者)->post(route('channels.store'), $this->作成の入力(['name' => '新しい公開']));
+
+        $作った = Channel::where('name', '新しい公開')->sole();
+        $response->assertRedirect(route('channels.show', $作った));
+        $response->assertSessionHas('status', 'チャンネルを作成しました');
+
+        // 知らせは共通の枠の本文の上に1行（screens.md 3-1 / behavior.md 4-6）
+        $this->actingAs($this->作成者)->get(route('channels.show', $作った))
+            ->assertSee('<div class="notice">チャンネルを作成しました</div>', false);
+    }
+
+    public function test_保存と削除でも決めた文言の知らせが出る(): void
+    {
+        $this->actingAs($this->作成者)
+            ->patch(route('channels.update', $this->公開チャンネル), ['name' => '開発', 'description' => '直した説明'])
+            ->assertSessionHas('status', 'チャンネルを保存しました');
+
+        $this->actingAs($this->作成者)
+            ->delete(route('channels.destroy', $this->公開チャンネル), ['name' => '開発'])
+            ->assertSessionHas('status', 'チャンネルを削除しました');
+    }
+
     public function test_型の合わない値を送っても戻った画面が落ちない(): void
     {
         $response = $this->actingAs($this->作成者)->from(route('channels.create'))
@@ -283,6 +335,21 @@ class ChannelTest extends TestCase
             'name' => '採用プロジェクト',
             'description' => '直した説明',
         ])->assertSessionHasErrors(['name' => 'この名前のチャンネルはすでにあります']);
+    }
+
+    public function test_説明を空にすると消え送られてこないときも前の値が残らない(): void
+    {
+        $this->actingAs($this->作成者)->patch(route('channels.update', $this->公開チャンネル), [
+            'name' => '開発',
+            'description' => '',
+        ]);
+        $this->assertNull($this->公開チャンネル->fresh()->description);
+
+        $this->公開チャンネル->update(['description' => '戻した説明']);
+
+        // 欄ごと送られてこないときも前の値を残さない
+        $this->actingAs($this->作成者)->patch(route('channels.update', $this->公開チャンネル), ['name' => '開発']);
+        $this->assertNull($this->公開チャンネル->fresh()->description);
     }
 
     public function test_編集に公開範囲の欄がなく送っても無視される(): void
