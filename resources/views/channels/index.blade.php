@@ -31,7 +31,11 @@
                             <div class="row__sub">@if ($listed->description){{ $listed->description }}　·　@endif作成者：{{ $listed->creator->name }}</div>
                         </div>
                         <div class="row__acts">
-                            {{-- 「メンバー」は単位3。行き先の SC-09 がまだ無い（acceptance.md 3-2） --}}
+                            {{-- 「メンバー」はプライベート×作成者の行だけ
+                                 （mockup/channels.html / permissions-api.md 1-4 の △1） --}}
+                            @can('manageMembers', $listed)
+                                <a class="btn btn--sm" href="{{ route('channels.members.index', $listed) }}">メンバー</a>
+                            @endcan
                             @can('update', $listed)
                                 <a class="btn btn--sm" href="{{ route('channels.edit', $listed) }}">編集</a>
                             @endcan
