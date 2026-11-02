@@ -39,6 +39,25 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---- 2. その場で書き換える（behavior.md 4-1 の #2・4-2）-----------------
     // 鉛筆は messages.edit へのリンク。JavaScript があるときは往復せずに
     // その場で差し替える。無効なときはリンクのまま、同じ状態の画面が開く。
+    // 編集中は「その1件だけ」（behavior.md 4-2）。鉛筆を続けて押したときに
+    // 前の書きかけが黙って消えないよう、開く前にほかを閉じる
+    var closeOthers = function (except) {
+        document.querySelectorAll('[data-edit-form]').forEach(function (form) {
+            if (form === except || form.hidden) {
+                return;
+            }
+
+            var msg = form.closest('.msg');
+            var body = msg && msg.querySelector('.msg__body');
+
+            form.hidden = true;
+
+            if (body) {
+                body.hidden = false;
+            }
+        });
+    };
+
     var parts = function (element) {
         var msg = element.closest('.msg');
 
@@ -57,6 +76,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             event.preventDefault();
+            closeOthers(found.form);
             found.body.hidden = true;
             found.form.hidden = false;
 

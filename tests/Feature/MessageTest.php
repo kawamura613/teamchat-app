@@ -196,6 +196,28 @@ class MessageTest extends TestCase
         $this->assertSame(0, Message::count());
     }
 
+    public function test_アバターは表示名の先頭2文字で人ごとに色が決まる(): void
+    {
+        // T-1-17（Q-36 の想定）。アバターを描く画面は単位4 以降なので、観点は
+        // 単位1 の番号のままここで確かめる（acceptance.md 3-1 の T-1-17）
+        $一文字の人 = User::create(['name' => '佐', 'email' => 'sa@example.com', 'password' => 'password']);
+        $this->makeMessage($this->公開チャンネル, ['user_id' => $this->作成者->id]);
+        $this->makeMessage($this->公開チャンネル, ['user_id' => $this->見られる人->id]);
+        $this->makeMessage($this->公開チャンネル, ['user_id' => $一文字の人->id]);
+
+        $response = $this->actingAs($this->作成者)->get(route('channels.show', $this->公開チャンネル));
+
+        // 先頭2文字。1文字の表示名は1文字だけ
+        $response->assertSee('>佐藤<', false);
+        $response->assertSee('>鈴木<', false);
+        $response->assertSee('>佐</span>', false);
+
+        // 人ごとに固定の4色。id から機械的に割り当てる（既定・--b・--c・--d）
+        $response->assertSee('class="avatar"', false);
+        $response->assertSee('class="avatar avatar--b"', false);
+        $response->assertSee('class="avatar avatar--d"', false);
+    }
+
     // 送る
 
     public function test_本文は空で弾かれ1000文字は通り1001文字で弾かれる(): void
@@ -257,6 +279,58 @@ class MessageTest extends TestCase
 
     // 書き換える
 
+    public function test_投稿欄と編集中の入力欄が打った内容を取り違えない(): void
+    {
+        // 同じ画面に body という名前の欄が2つある。どちらが落ちたかをエラーの袋で
+        // 見分けないと、投稿欄の下書きが編集中の入力欄に入り、「保存」で本文が
+        // 新規投稿のつもりの文に上書きされる（screens.md 4-6 / behavior.md 4-2）
+        $message = $this->makeMessage($this->公開チャンネル, ['body' => '元の本文']);
+        $長すぎる投稿 = str_repeat('あ', 1001);
+        $長すぎる書き換え = str_repeat('い', 1001);
+
+        // 編集中のアドレスを開いたまま、投稿欄が落ちたとき
+        $response = $this->actingAs($this->作成者)
+            ->from(route('messages.edit', $message))
+            ->followingRedirects()
+            ->post(route('channels.messages.store', $this->公開チャンネル), ['body' => $長すぎる投稿]);
+        $response->assertOk();
+
+        $画面 = $response->getContent();
+        // 編集中の入力欄は元の本文のまま
+        $this->assertSame('元の本文', $this->textareaOf($画面, 'message-body-'.$message->id));
+        // 投稿欄には打った下書きが残る（直せるように見せる）
+        $this->assertSame($長すぎる投稿, $this->textareaOf($画面, 'composer-body'));
+
+        // 逆向き: 編集中が落ちたとき
+        $response = $this->actingAs($this->作成者)
+            ->followingRedirects()
+            ->patch(route('messages.update', $message), ['body' => $長すぎる書き換え]);
+        $response->assertOk();
+
+        $画面 = $response->getContent();
+        $this->assertSame($長すぎる書き換え, $this->textareaOf($画面, 'message-body-'.$message->id));
+        $this->assertSame('', $this->textareaOf($画面, 'composer-body'));
+
+        // どちらでも本文は変わっていない
+        $this->assertSame('元の本文', $message->fresh()->body);
+    }
+
+    public function test_返信に対する編集と削除は3本そろって404になる(): void
+    {
+        // behavior.md 4-2。出す先の SC-07 が単位5 なので 3 本で揃える。1 本だけ
+        // 404 にすると、落ちたときの戻り先が 404 になって打った内容が消える
+        $親 = $this->makeMessage($this->公開チャンネル, ['body' => '親の本文']);
+        $返信 = $this->makeMessage($this->公開チャンネル, ['parent_id' => $親->id, 'body' => '返信の本文']);
+
+        $this->actingAs($this->作成者)->get(route('messages.edit', $返信))->assertNotFound();
+        $this->actingAs($this->作成者)->patch(route('messages.update', $返信), ['body' => '直した本文'])->assertNotFound();
+        $this->actingAs($this->作成者)->delete(route('messages.destroy', $返信))->assertNotFound();
+
+        $返信->refresh();
+        $this->assertSame('返信の本文', $返信->body);
+        $this->assertNull($返信->deleted_at);
+    }
+
     public function test_書き換えて空にして保存しても削除にならず編集中のまま残る(): void
     {
         // T-4-08（screens.md 4-6）。消すときはごみ箱を使う
@@ -265,7 +339,8 @@ class MessageTest extends TestCase
         $response = $this->actingAs($this->作成者)
             ->patch(route('messages.update', $message), ['body' => '   ']);
 
-        $response->assertRedirect(route('messages.edit', $message));
+        // 錨つきで戻す。無いと app.js が一覧を末尾まで送って編集中が画面の外になる
+        $response->assertRedirect(route('messages.edit', $message).'#message-'.$message->id);
         $response->assertSessionHasErrors(['body' => 'メッセージを入力してください'], null, 'edit');
 
         $message->refresh();
@@ -498,9 +573,22 @@ class MessageTest extends TestCase
         return $message;
     }
 
-    private function postMessage(Channel $channel, array $入力 = [], ?User $as = null): TestResponse
+    private function postMessage(Channel $channel, array $入力 = []): TestResponse
     {
-        return $this->actingAs($as ?? $this->作成者)
+        return $this->actingAs($this->作成者)
             ->post(route('channels.messages.store', $channel), $入力 + ['body' => 'メッセージ']);
+    }
+
+    /**
+     * その id の入力欄に入っている文字列を取る。
+     *
+     * 投稿欄と編集中の入力欄は同じ name="body" なので、「どちらに何が入ったか」
+     * は欄ごとに見ないと分からない。
+     */
+    private function textareaOf(string $html, string $id): string
+    {
+        preg_match('/id="'.preg_quote($id, '/').'"[^>]*>(.*?)<\/textarea>/s', $html, $一致);
+
+        return $一致[1] ?? '';
     }
 }

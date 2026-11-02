@@ -372,12 +372,19 @@ mark{background:#FBEBBD;color:inherit;border-radius:2px;padding:0 1px}
 /* ホバー操作の出し入れ（screens.md 3-3 / design-guide.md 4 の「ホバーで出る操作」）。
    .msg__acts の見た目はモックアップにあるが、出し入れの規則が styles.css に無い。
    JavaScript は使わない（behavior.md 4-1 の「CSS とURLだけで作るもの」）。
-   マウスを使わない人のために :focus-within も見る */
-.msg__acts{display:none}
-.msg:hover .msg__acts,.msg:focus-within .msg__acts{display:flex}
+   マウスを使わない人のために :focus-within も見る。隠すのに display:none を
+   使わないのは、その中身がタブで辿れず :focus-within が永久に発火しないため */
+.msg__acts{opacity:0;pointer-events:none}
+.msg:hover .msg__acts,.msg:focus-within .msg__acts{opacity:1;pointer-events:auto}
 
 /* 着地した1件の強調（behavior.md 4-4）。色は一致部分の強調と同じに揃える */
 .msg:target{background:#FBEBBD}
+
+/* 返信アイコンが押せないことの見た目（behavior.md 4-1 の (8)）。単位4 では
+   行き先の SC-07 が無い。.icon-btn の cursor:pointer とホバーの地を打ち消して、
+   押せそうに見えないようにする。単位5 でリンクにすると当たらなくなる */
+.icon-btn[aria-disabled="true"]{cursor:default;color:var(--text-disabled)}
+.icon-btn[aria-disabled="true"]:hover{background:transparent;color:var(--text-disabled)}
 
 /* 投稿欄がエラーのときの枠と地（screens.md 4-1）。投稿欄は .field の外にあるので
    .field.is-error の規則が当たらない。値は .field.is-error と同じ */

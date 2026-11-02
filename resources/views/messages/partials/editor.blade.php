@@ -8,10 +8,12 @@
 
      $open … この1件がいま編集中か。URL（messages.edit）で開いたときだけ true。 --}}
 @php
-    // 打った内容を戻すのは、落ちたのがこの1件のときだけ。投稿欄が落ちた
-    // ときの old('body') を、ほかのメッセージの入力欄に流し込まないため
-    $編集中の本文 = $open && is_string($値 = old('body', $message->body)) ? $値 : $message->body;
+    // どちらのフォームが落ちたかは、**エラーの袋**で見分ける。$open だけで見ると、
+    // 同じ画面の投稿欄が落ちたときの old('body') をここに流し込んでしまい、
+    // 「保存」でメッセージの本文が新規投稿のつもりの文に上書きされる
     $編集中のエラー = $open ? $errors->getBag('edit')->first('body') : null;
+    // 打った内容を戻すのは、落ちたのがこの1件の編集中のときだけ
+    $編集中の本文 = $編集中のエラー && is_string($値 = old('body', $message->body)) ? $値 : $message->body;
 @endphp
 <form method="POST" action="{{ route('messages.update', $message) }}" data-edit-form="{{ $open ? 'open' : 'closed' }}" @unless ($open) hidden @endunless>
     @csrf

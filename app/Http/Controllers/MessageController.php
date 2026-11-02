@@ -42,13 +42,10 @@ class MessageController extends Controller
      *
      * 新しい画面ではなく、SC-06 のその1件だけを編集中にして返す。
      */
-    public function edit(Request $request, Message $message): View
+    public function edit(Message $message): View
     {
+        $this->abortIfReply($message);
         $this->authorize('update', $message);
-
-        // 返信の編集中は SC-07 の中の状態（behavior.md 4-2）。その SC-07 が
-        // 単位5 なので、出す先がまだ無い。単位5 で SC-07 に差し替える
-        abort_if($message->parent_id !== null, 404);
 
         return $this->screen($message->channel, $message->getKey());
     }
@@ -58,6 +55,7 @@ class MessageController extends Controller
      */
     public function update(Request $request, Message $message): RedirectResponse
     {
+        $this->abortIfReply($message);
         $this->authorize('update', $message);
 
         // $request->validate() だと落ちたときに直前の URL（SC-06）へ戻り、
@@ -67,7 +65,9 @@ class MessageController extends Controller
         $validator = Validator::make($request->all(), $this->rules(), $this->messages());
 
         if ($validator->fails()) {
-            return redirect()->route('messages.edit', $message)
+            // 錨を付けないと app.js が一覧を末尾まで送ってしまい、編集中の
+            // 入力欄もエラー文も画面の外になる（behavior.md 4-4）
+            return redirect()->to(route('messages.edit', $message).'#message-'.$message->getKey())
                 // 投稿欄と同じ body なので、編集中のエラーは別の袋に入れる
                 ->withErrors($validator, 'edit')
                 ->withInput();
@@ -85,8 +85,9 @@ class MessageController extends Controller
     /**
      * F-16 メッセージ削除（列D ＋ △3）。
      */
-    public function destroy(Request $request, Message $message): RedirectResponse
+    public function destroy(Message $message): RedirectResponse
     {
+        $this->abortIfReply($message);
         $this->authorize('delete', $message);
 
         // deleted_at を立てるだけ。body にも parent_id の返信にも触らない
@@ -99,7 +100,26 @@ class MessageController extends Controller
     }
 
     /**
+     * 返信に対する編集・削除は単位5（behavior.md 4-2）。
+     *
+     * 出す先の SC-07 がまだ無いので、edit・update・destroy の **3 本そろって**
+     * 404 を返す。1 本だけ 404 にすると、入力チェックに落ちたときの戻り先
+     * （messages.edit）が 404 になって、打った内容が消える。
+     *
+     * これは「出す先が無い」ことによる 404 なので、**authorize より先に**見る。
+     * 単位5 で SC-07 を作ったら、この 3 か所の呼び出しを外す。
+     */
+    private function abortIfReply(Message $message): void
+    {
+        abort_if($message->parent_id !== null, 404);
+    }
+
+    /**
      * SC-06 を組む。`ChannelController@show` と同じ中身で、1件だけ編集中にする。
+     *
+     * **view に渡す鍵はここと `ChannelController@show` の 2 か所にある。**
+     * 片方だけ増やすと、もう片方の経路で「変数が無い」で落ちる（単位5 で
+     * スレッドの鍵を足すときに効く）。
      */
     private function screen(Channel $channel, ?int $editingId): View
     {

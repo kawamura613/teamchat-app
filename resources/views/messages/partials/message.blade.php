@@ -7,16 +7,19 @@
      アンカーは跡地にも振る（behavior.md 4-4）。 --}}
 @php
     $編集中 = $editingId === $message->id;
-    // 編集・ごみ箱は、自分が書いたもので、まだ削除されていないときだけ
-    // （screens.md 3-3・4-9 / permissions-api.md 1-4 の △3）
-    $直せる = ! $message->trashed() && $message->user_id === auth()->id();
+    // 編集・ごみ箱を出す条件は **MessagePolicy に聞く**（screens.md 3-3・4-9）。
+    // ここに条件を書き写すと物差しが 2 つになり、ポリシーに条件が増えたときに
+    // ボタンだけ出続けて押すたび 403 になる（CLAUDE.md「認可の順番」）。
+    // F-15 と F-16 は権限マトリクスの行が同じ（△3）なので 1 回聞けば足りる
+    // （permissions-api.md 1-3）。1 件につき 1 回に抑えるため変数に入れる
+    $直せる = auth()->user()->can('update', $message);
     $返信件数 = $message->replies_count ?? 0;
 @endphp
 <article class="msg{{ $message->trashed() ? ' msg--deleted' : '' }}" id="message-{{ $message->id }}">
     <div class="msg__acts">
         {{-- 返信の行き先（SC-07・F-19）は単位5。それまでは押せない印として出す。
              削除されたメッセージにも残す（screens.md 3-3 / AC-4-4） --}}
-        <span class="icon-btn" title="返信"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg></span>
+        <span class="icon-btn" title="返信" aria-disabled="true"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg></span>
         @if ($直せる)
             <a class="icon-btn" href="{{ route('messages.edit', $message) }}" title="編集" data-edit-open><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M11 2.6 13.4 5 5.4 13H3v-2.4z"/></svg></a>
             {{-- 確認は JavaScript の1枚で、画面は増やさない（questions.md 決定11・仮） --}}

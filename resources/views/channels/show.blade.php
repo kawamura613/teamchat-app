@@ -57,9 +57,10 @@
         <div id="bottom"></div>
     </div>
     @php
-        // 投稿欄に戻すのは、落ちたのが投稿欄のときだけ。編集中が落ちたときの
-        // old('body') は、編集中の入力欄が受け取る（messages/partials/editor）
-        $投稿欄の本文 = ! $editingId && is_string($値 = old('body', '')) ? $値 : '';
+        // 投稿欄に戻すのは、落ちたのが投稿欄のときだけ。編集中が落ちたときは
+        // エラーが 'edit' の袋に入るので、ここは空のまま（editor が受け取る）。
+        // $editingId で見ると、編集中のアドレスで投稿欄が落ちたときに下書きが消える
+        $投稿欄の本文 = $errors->getBag('default')->has('body') && is_string($値 = old('body', '')) ? $値 : '';
     @endphp
     {{-- 投稿欄は、そのチャンネルに書ける人にだけ出す（screens.md 3-3 / F-05）。
          この画面を開けるのは列C だけなので、ここまで来た人は書ける --}}

@@ -72,6 +72,8 @@ class ChannelController extends Controller
     {
         $channel = $this->visibleChannel($request, $channel);
 
+        // 渡す鍵はここと MessageController@screen の 2 か所にある。片方だけ
+        // 増やすと、もう片方の経路で「変数が無い」で落ちる
         return view('channels.show', [
             'channel' => $channel,
             'messages' => $channel->timeline()->get(),
