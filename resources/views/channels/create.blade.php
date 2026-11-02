@@ -46,8 +46,11 @@
                         <span class="label">公開範囲</span>
                         {{-- 選んでいる側の強調は :has(input:checked) で出す（behavior.md 4-1） --}}
                         <div class="radio-set">
+                            {{-- 既定は「公開」。ただし公開範囲のエラーが出ているときは
+                                 どちらも選んでいない形に戻す（「選択してください」と
+                                 出ているのに選択済みに見えるのを避ける） --}}
                             <label class="radio">
-                                <input type="radio" name="is_private" value="0" @checked(old('is_private', '0') === '0')>
+                                <input type="radio" name="is_private" value="0" @checked(old('is_private', $errors->has('is_private') ? null : '0') === '0')>
                                 <span><span class="rt">公開</span><span class="rd" style="display:block">ログインしている社員なら誰でも読み書きできます。</span></span>
                             </label>
                             <label class="radio">

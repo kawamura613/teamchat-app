@@ -224,6 +224,15 @@ class ChannelTest extends TestCase
             '.radio:has(input:checked)',
             file_get_contents(public_path('css/app.css'))
         );
+
+        // 公開範囲が選べていないときは、どちらも選んでいない形で出す
+        $this->actingAs($this->作成者)->from(route('channels.create'))
+            ->post(route('channels.store'), $this->作成の入力(['name' => '範囲なし', 'is_private' => '2']))
+            ->assertSessionHasErrors(['is_private' => '公開範囲を選択してください']);
+
+        $戻り = $this->actingAs($this->作成者)->get(route('channels.create'));
+        $戻り->assertDontSee('name="is_private" value="0" checked', false);
+        $戻り->assertDontSee('name="is_private" value="1" checked', false);
     }
 
     public function test_公開はメンバーの行ができずプライベートは作成者の行が1つだけできる(): void
