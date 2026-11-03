@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 use Tests\TestCase;
 
 /**
@@ -34,6 +35,8 @@ class ApiTest extends TestCase
 
     private User $メンバー;
 
+    private User $メンバーでない人;
+
     private Channel $公開チャンネル;
 
     private Channel $プライベートチャンネル;
@@ -44,6 +47,7 @@ class ApiTest extends TestCase
 
         $this->作成者 = User::create(['name' => '佐藤 太郎', 'email' => 'sato@example.com', 'password' => 'password']);
         $this->メンバー = User::create(['name' => '鈴木 花子', 'email' => 'suzuki@example.com', 'password' => 'password']);
+        $this->メンバーでない人 = User::create(['name' => '高橋 健', 'email' => 'takahashi@example.com', 'password' => 'password']);
 
         $this->公開チャンネル = $this->makeChannel(['name' => '開発', 'description' => '開発に関する相談と報告']);
         $this->プライベートチャンネル = $this->makeChannel([
@@ -79,6 +83,28 @@ class ApiTest extends TestCase
         // 返信そのものは data に並ばない
         $this->assertStringNotContainsString('返信の本文', $response->getContent());
         $this->assertNotContains($返信->id, array_column($response->json('data'), 'id'));
+    }
+
+    public function test_編集済みかどうかが真偽値で返る(): void
+    {
+        // T-7-02 の「編集済みかどうか」（permissions-api.md 3-3 / Q-17 の想定）。
+        // **真と偽の両方を見る。**キーの有無だけ見ていると、`!==` を `===` に
+        // 書き換えても気づけない。いつ直したか（edited_at）は返さない
+        $直したもの = $this->makeMessage($this->公開チャンネル, [
+            'body' => '直した本文',
+            'created_at' => now()->subHour(),
+            'edited_at' => now(),
+        ]);
+        $直していないもの = $this->makeMessage($this->公開チャンネル, [
+            'body' => '直していない本文',
+            'created_at' => now()->subHours(2),
+        ]);
+
+        $response = $this->getJson($this->メッセージの経路($this->公開チャンネル));
+
+        $並び = array_column($response->json('data'), 'edited', 'id');
+        $this->assertTrue($並び[$直したもの->id]);
+        $this->assertFalse($並び[$直していないもの->id]);
     }
 
     public function test_日時は8601の形でプラス9時間が付く(): void
@@ -151,11 +177,10 @@ class ApiTest extends TestCase
     public function test_誰が呼んでもプライベートチャンネルは一覧に出ない(): void
     {
         // T-7-02（仕様書 3-7 / 回答1 / permissions-api.md 1-3。F-21 は呼ぶ相手を
-        // 判定に使わない）。**作成者やメンバーがログインしたままでも出さない**
-        foreach ([null, $this->作成者, $this->メンバー] as $呼ぶ人) {
-            $response = $呼ぶ人 === null
-                ? $this->getJson(route('api.channels.index'))
-                : $this->actingAs($呼ぶ人)->getJson(route('api.channels.index'));
+        // 判定に使わない）。**作成者やメンバーがログインしたままでも出さない**。
+        // メンバーでない人も入れる（.claude/rules/testing.md の 3 人）
+        foreach ([null, $this->作成者, $this->メンバー, $this->メンバーでない人] as $呼ぶ人) {
+            $response = $this->叩く($呼ぶ人, route('api.channels.index', [], false));
 
             $response->assertOk();
             $response->assertJsonCount(1, 'data');
@@ -246,7 +271,7 @@ class ApiTest extends TestCase
         // **文言を言い分けた瞬間に、プライベートチャンネルがあることが漏れる**
         $無いid = $this->プライベートチャンネル->id + 999;
 
-        foreach ([null, $this->作成者, $this->メンバー] as $呼ぶ人) {
+        foreach ([null, $this->作成者, $this->メンバー, $this->メンバーでない人] as $呼ぶ人) {
             $プライベート = $this->叩く($呼ぶ人, $this->メッセージの経路($this->プライベートチャンネル));
             $存在しない = $this->叩く($呼ぶ人, '/api/channels/'.$無いid.'/messages');
 
@@ -288,12 +313,24 @@ class ApiTest extends TestCase
     public function test_書き込みの3つは405で読み取り専用と返る(): void
     {
         // T-7-13（仕様書 3-7 / behavior.md 3-4）。GET しか定義していないので
-        // Laravel が MethodNotAllowedHttpException にする
-        foreach (['postJson', 'patchJson', 'deleteJson'] as $やり方) {
-            $response = $this->{$やり方}(route('api.channels.index'));
+        // Laravel が MethodNotAllowedHttpException にする。
+        // **引数を取る messages のほうも見る。**Route::any で登録されても
+        // 気づけるようにしておく（一覧だけ見ていると素通りする）
+        $経路 = [
+            route('api.channels.index', [], false),
+            $this->メッセージの経路($this->公開チャンネル),
+        ];
 
-            $response->assertStatus(405);
-            $response->assertExactJson(['message' => 'このAPIは読み取り専用です']);
+        foreach ($経路 as $それぞれ) {
+            foreach (['postJson', 'patchJson', 'deleteJson'] as $やり方) {
+                $response = $this->{$やり方}($それぞれ);
+
+                $response->assertStatus(405);
+                $response->assertExactJson(['message' => 'このAPIは読み取り専用です']);
+                // 405 は Allow を返さないといけない（RFC 7231 6.5.5）。
+                // 例外が持つヘッダーを落としていないことの確認（behavior.md 3-4）
+                $response->assertHeader('allow', 'GET, HEAD');
+            }
         }
     }
 
@@ -310,25 +347,51 @@ class ApiTest extends TestCase
         $response->assertStatus(429);
         $response->assertExactJson(['message' => 'リクエストが多すぎます。しばらくしてからお試しください']);
         $this->assertStringNotContainsString('Too Many', $response->getContent());
+        // 再試行の時期が分かるヘッダーを落としていないこと（behavior.md 3-4）。
+        // これが無いと、ポータル側はいつ叩き直せるか決められない
+        $response->assertHeader('retry-after');
+        $response->assertHeader('x-ratelimit-limit', 60);
     }
 
     public function test_500で例外の中身が漏れない(): void
     {
         // T-7-15（behavior.md 3-1・3-4）。アプリ側にテスト用のルートを足さず、
-        // ここで api ミドルウェア付きの使い捨てルートを 1 本だけ定義する
-        config(['app.debug' => false]);
-
+        // ここで api ミドルウェア付きの使い捨てルートを 1 本だけ定義する。
+        //
+        // **APP_DEBUG が true のほうも見る。**Handler は debug の値で出し分けない
+        // と決めている（.env.example は APP_DEBUG=true のまま配っているので、
+        // true のほうが素の状態）。false だけ見ていると、将来 debug で分岐を
+        // 足されても気づけない
         Route::middleware('api')->get('/api/テスト用に落とす', function () {
             throw new RuntimeException('秘密の中身とスタックトレース');
         });
 
-        $response = $this->getJson('/api/テスト用に落とす');
+        foreach ([false, true] as $デバッグ) {
+            config(['app.debug' => $デバッグ]);
 
-        $response->assertStatus(500);
-        $response->assertExactJson(['message' => 'サーバ側で問題が発生しました']);
-        $this->assertStringNotContainsString('秘密の中身', $response->getContent());
-        $this->assertStringNotContainsString('RuntimeException', $response->getContent());
-        $this->assertStringNotContainsString('ApiTest.php', $response->getContent());
+            $response = $this->getJson('/api/テスト用に落とす');
+
+            $response->assertStatus(500);
+            $response->assertExactJson(['message' => 'サーバ側で問題が発生しました']);
+            $this->assertStringNotContainsString('秘密の中身', $response->getContent());
+            $this->assertStringNotContainsString('RuntimeException', $response->getContent());
+            $this->assertStringNotContainsString('ApiTest.php', $response->getContent());
+        }
+    }
+
+    public function test_表に無いエラーは元のステータスを保つ(): void
+    {
+        // behavior.md 3-4 の「上の表に無い HttpException は、元のステータスを
+        // 保つ」。500 に畳むと、保守モードの 503 が 500 になり Retry-After も落ちる
+        Route::middleware('api')->get('/api/テスト用に止める', function () {
+            throw new ServiceUnavailableHttpException(120);
+        });
+
+        $response = $this->getJson('/api/テスト用に止める');
+
+        $response->assertStatus(503);
+        $response->assertExactJson(['message' => 'ただいまご利用いただけません。しばらくしてからお試しください']);
+        $response->assertHeader('retry-after', 120);
     }
 
     // 変わっていない
@@ -354,11 +417,22 @@ class ApiTest extends TestCase
         return route('api.channels.messages.index', $channel, false);
     }
 
+    /**
+     * 「誰が呼んでも同じ」を見るための包み。
+     *
+     * **null のときは必ずログアウトした状態にする。**actingAs() はテストの中で
+     * 残るので、null の回に actingAs を省くだけだと、前の回のログインが効いた
+     * まま「未ログインのつもり」の検証になる（配列の順を変えると静かに壊れる）。
+     */
     private function 叩く(?User $呼ぶ人, string $経路): TestResponse
     {
-        return $呼ぶ人 === null
-            ? $this->getJson($経路)
-            : $this->actingAs($呼ぶ人)->getJson($経路);
+        if ($呼ぶ人 === null) {
+            $this->app['auth']->forgetGuards();
+
+            return $this->getJson($経路);
+        }
+
+        return $this->actingAs($呼ぶ人)->getJson($経路);
     }
 
     private function makeChannel(array $差分 = []): Channel

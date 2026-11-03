@@ -208,30 +208,33 @@ class MessageTest extends TestCase
         // 単位1 の番号のままここで確かめる（acceptance.md 3-1 の T-1-17）
         //
         // 色は ($user->id - 1) % 4 で決まる（partials/avatar.blade.php）。
-        // **id を固定して作る。**RefreshDatabase はトランザクションを巻き戻すだけで
-        // MySQL の AUTO_INCREMENT は戻らないので、id を採番に任せると、ほかの
-        // テストクラスの件数で出る色が変わってしまう（2026-11-03 に修正）
-        foreach ([1 => '一色 いちろう', 2 => '二色 じろう', 3 => '三色 さぶろう', 4 => '佐'] as $id => $名前) {
-            $user = new User;
-            $user->forceFill([
-                'id' => $id,
+        //
+        // **id を決め打ちしない。**RefreshDatabase はトランザクションを巻き戻すだけで
+        // MySQL の AUTO_INCREMENT は戻らないので、id はほかのテストの件数で動く。
+        // 決め打ちすると setUp() が採番した id とぶつかって落ちる。
+        //
+        // 代わりに**続けて作った4人**を使う。id が連続していれば (id - 1) % 4 は
+        // 0・1・2・3 を 1 回ずつ取るので、**どこから始まっても4色が1回ずつ出る**。
+        // ビューの式をテストに書き写さずに済む（2026-11-03 に修正）
+        foreach (['一色 いちろう', '二色 じろう', '三色 さぶろう', '佐'] as $番 => $名前) {
+            $user = User::create([
                 'name' => $名前,
-                'email' => "avatar{$id}@example.com",
+                'email' => "avatar{$番}@example.com",
                 'password' => 'password',
             ]);
-            $user->save();
-            $this->makeMessage($this->公開チャンネル, ['user_id' => $id]);
+            $this->makeMessage($this->公開チャンネル, ['user_id' => $user->id]);
         }
 
         $response = $this->actingAs($this->作成者)->get(route('channels.show', $this->公開チャンネル));
 
-        // 先頭2文字。1文字の表示名（id 4 の「佐」）は1文字だけ
+        // 先頭2文字。1文字の表示名（「佐」）は1文字だけ
         $response->assertSee('>一色<', false);
         $response->assertSee('>二色<', false);
         $response->assertSee('>三色<', false);
         $response->assertSee('>佐</span>', false);
 
-        // 人ごとに固定の4色。id から機械的に割り当てる（既定・--b・--c・--d）
+        // 人ごとに固定の4色。id が連続する4人なので、既定・--b・--c・--d が
+        // 1 回ずつ出る（どの色が誰に出るかは id の始まりで変わるので見ない）
         $response->assertSee('class="avatar"', false);
         $response->assertSee('class="avatar avatar--b"', false);
         $response->assertSee('class="avatar avatar--c"', false);

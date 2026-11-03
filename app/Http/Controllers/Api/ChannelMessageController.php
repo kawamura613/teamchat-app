@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Resources\ApiCollection;
 use App\Http\Resources\MessageResource;
 use App\Models\Channel;
-use Illuminate\Http\JsonResponse;
 
 /**
  * F-22 公開チャンネルのメッセージ一覧（permissions-api.md 3-3）。
@@ -21,7 +21,7 @@ class ChannelMessageController extends Controller
      * 「そこに部屋がある」ことが漏れる（permissions-api.md 1-5）。
      * ルートで `whereNumber` を掛けているので、ここには数字しか来ない。
      */
-    public function index(int $channel): JsonResponse
+    public function index(int $channel): ApiCollection
     {
         // **公開チャンネルに絞って取る**（permissions-api.md 1-6 の public スコープ）。
         // プライベートの ID も存在しない ID も、同じ ModelNotFoundException に
@@ -49,6 +49,6 @@ class ChannelMessageController extends Controller
             ->orderByDesc('id')
             ->paginate(self::件数);
 
-        return $this->json(MessageResource::collection($messages));
+        return new ApiCollection($messages, MessageResource::class);
     }
 }

@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Resources\ApiCollection;
 use App\Http\Resources\ChannelResource;
 use App\Models\Channel;
-use Illuminate\Http\JsonResponse;
 
 /**
  * F-21 公開チャンネルの一覧（permissions-api.md 3-2）。
@@ -17,7 +17,7 @@ use Illuminate\Http\JsonResponse;
  */
 class ChannelController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(): ApiCollection
     {
         $channels = Channel::public()
             // 作成者の表示名を返すので先読みする（CLAUDE.md の N+1 の決め）
@@ -26,6 +26,8 @@ class ChannelController extends Controller
             ->orderBy('id')
             ->paginate(self::件数);
 
-        return $this->json(ChannelResource::collection($channels));
+        // ApiCollection が符号化オプションを持つ（behavior.md 3-4）。
+        // Responsable なので、返すだけで Laravel が JSON にする
+        return new ApiCollection($channels, ChannelResource::class);
     }
 }
