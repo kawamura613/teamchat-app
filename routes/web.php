@@ -4,6 +4,7 @@ use App\Http\Controllers\ChannelController;
 use App\Http\Controllers\ChannelMemberController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ReplyController;
+use App\Http\Controllers\SearchController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -69,4 +70,10 @@ Route::middleware(['auth', 'cache.headers:no_store;no_cache;must_revalidate;max_
         Route::patch('/messages/{message}', [MessageController::class, 'update'])->name('messages.update');
         Route::delete('/messages/{message}', [MessageController::class, 'destroy'])->name('messages.destroy');
         Route::post('/messages/{message}/replies', [ReplyController::class, 'store'])->name('messages.replies.store')->withTrashed();
+
+        // SC-08 検索結果（F-20）。GET にしているのは、検索結果の URL を人に送れて
+        // ブラウザの履歴にも残るため（permissions-api.md 2-2 の「検索の入力」）。
+        // キーワードは引数ではなくクエリ文字列（`?q=…`）で受けるので、グループの
+        // whereNumber は当たらない。
+        Route::get('/search', [SearchController::class, 'index'])->name('search');
     });
