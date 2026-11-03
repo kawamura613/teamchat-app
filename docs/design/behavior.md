@@ -275,6 +275,10 @@ sequenceDiagram
 | `ThrottleRequestsException` → 429 の文言に差し替え | 既定は英語の `Too Many Attempts.` です |
 | `Throwable` → 500 の文言に差し替え | `APP_DEBUG=true` のままだと、例外の中身とスタックトレースがJSONで返ります |
 
+**どこで画面側と分けるか**
+
+**判定は「URL が `api/*` かどうか」で行います。`expectsJson()` では分けません。**`acceptance.md` 2-7 は「**ブラウザのアドレス欄にURLを入れて、返ってきたJSONを目で見る**」と決めているので、公開APIにも `Accept: text/html` で来ます。`expectsJson()` で分けると、そのとき画面側のエラー画面（HTML）が返り、AC-7-3 の「存在しないIDを入れたときとまったく同じ404・同じ文言」を満たせません。`api/*` 以外は既定のまま通し、`resources/views/errors/*.blade.php` の振る舞いを変えません（2026-11-03 に追加）。
+
 ### 3-5. トランザクション
 
 複数の行を続けて書くところだけ、1つのトランザクションに入れます。
