@@ -1,5 +1,5 @@
-{{-- 共通の枠（F-04 / screens.md 3-1）。単位2 でサイドバーを足した。
-     上部バーの検索窓は単位6。
+{{-- 共通の枠（F-04 / screens.md 3-1）。単位2 でサイドバーを足し、単位6 で
+     上部バーの検索窓を足した。
 
      $sidebarChannels と $selectedChannelId は AppServiceProvider の
      View Composer が渡す（permissions-api.md 1-6）。各コントローラーでは渡さない。
@@ -21,7 +21,16 @@
         <a class="topbar__brand" href="{{ route('channels.index') }}">
             <span class="brandmark">チ</span>チームチャットアプリ
         </a>
-        <div></div>
+        {{-- 検索窓（F-20 / screens.md 3-1）。キーワードを入れて確定すると
+             `GET /search?q=…` で SC-08 へ行く（permissions-api.md 2-2）。
+             **ここには打った内容を残さない。**残すのは SC-08 の欄の役目で、
+             3-1 はプレースホルダだけと決めている --}}
+        <div class="topbar__search">
+            <form class="search-input" method="GET" action="{{ route('search') }}" role="search">
+                <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14" stroke-linecap="round"/></svg>
+                <input type="text" name="q" placeholder="メッセージを検索" maxlength="1000" aria-label="メッセージを検索">
+            </form>
+        </div>
         <div class="topbar__me">
             <span class="nm">{{ auth()->user()->name }}</span>
             {{-- リンクを踏んだだけで切れないよう POST（permissions-api.md 4-1 の #7） --}}

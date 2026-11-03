@@ -384,3 +384,16 @@ mark{background:#FBEBBD;color:inherit;border-radius:2px;padding:0 1px}
    .field.is-error の規則が当たらない。値は .field.is-error と同じ */
 .composer__box.is-error{border-color:var(--danger);background:var(--danger-soft)}
 .composer__box.is-error:focus-within{border-color:var(--danger);box-shadow:0 0 0 3px rgba(179,38,30,.2)}
+
+/* 上部バーの検索窓の入力欄（F-20 / behavior.md 4-1 の (8)）。モックアップの
+   .search-input は <div> と <span> で、本物の入力欄が無い。GET /search のフォームに
+   するので <input> が入る。枠と地は親の .search-input が持っているので、入力欄の
+   ほうは枠なし・地なしにして色とフォントを継承させる */
+.search-input input{flex:1;min-width:0;border:0;background:none;color:var(--side-text-strong);font:inherit;font-size:var(--fs-label);outline:none}
+.search-input input::placeholder{color:#A9B3BF}
+
+/* 検索結果の行をリンクにしたぶんの打ち消し（SC-08 / behavior.md 4-1 の (9)）。
+   screens.md 3-5 の「行そのものを押して元の会話へ移動します」のため .row を <a> に
+   するので、素の a の藍色と下線を消す。(3) と同じ型 */
+a.row{color:inherit;text-decoration:none}
+a.row:hover{text-decoration:none}
