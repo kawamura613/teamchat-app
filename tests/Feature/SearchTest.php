@@ -55,6 +55,14 @@ class SearchTest extends TestCase
 
     // 見る
 
+    public function test_未ログインでは検索を開けずログイン画面へ送られる(): void
+    {
+        // permissions-api.md 1-5 の列A（T-1-12 の範囲）。SC-08 も auth の中にある。
+        // 単位1 では /search がまだ無く、この経路だけ確かめられていなかった
+        $this->get(route('search', ['q' => 'リリース']))->assertRedirect(route('login'));
+        $this->get(route('search'))->assertRedirect(route('login'));
+    }
+
     public function test_キーワードが無いときはまだ検索していませんが出る(): void
     {
         // T-6-01（questions.md 決定9 / screens.md 4-8）。**「無い」と「空」を分ける。**
@@ -158,6 +166,24 @@ class SearchTest extends TestCase
         $this->search($this->作成者, ['q' => 'リリース 会議'])->assertSee('に一致するメッセージはありません', false);
         // 大文字小文字を区別しない
         $this->search($this->作成者, ['q' => 'release note'])->assertSee('の検索結果　1件', false);
+    }
+
+    public function test_ひらがなとカタカナや全角半角の揺れも吸収する(): void
+    {
+        // T-6-06（questions.md 決定10。utf8mb4_unicode_ci が同じ字として扱う）。
+        // **強調も出る**ことまで見る。PHP 側が畳まないと、DB は当てたのに
+        // 抜粋が先頭から・強調なしになる（T-6-11）
+        $this->makeMessage($this->公開チャンネル, ['body' => '9月リリースの日程']);
+        $this->makeMessage($this->公開チャンネル, ['body' => 'ＡＰＩの返し方']);
+
+        $かな = $this->search($this->作成者, ['q' => 'りりーす']);
+        $かな->assertSee('の検索結果　1件', false);
+        // 出すのは本文の表記のまま
+        $かな->assertSee('<mark>リリース</mark>', false);
+
+        $英数 = $this->search($this->作成者, ['q' => 'api']);
+        $英数->assertSee('の検索結果　1件', false);
+        $英数->assertSee('<mark>ＡＰＩ</mark>', false);
     }
 
     // 出さない
@@ -264,6 +290,45 @@ class SearchTest extends TestCase
         $response->assertDontSee('…', false);
     }
 
+    public function test_本文の末尾で当たっても抜粋は100文字ぶん出る(): void
+    {
+        // T-6-11（screens.md 3-5。末尾に寄ったら前へ寄せ直す）。寄せ直さないと
+        // 窓が 53 文字などに縮んで、前方の予算を捨てることになる
+        $this->makeMessage($this->公開チャンネル, ['body' => str_repeat('前', 300).'リリース']);
+
+        $response = $this->search($this->作成者, ['q' => 'リリース']);
+
+        // 前 96 文字 ＋ リリース 4 文字 = 100 文字。末尾なので後ろに「…」は付かない
+        $response->assertSee('…'.str_repeat('前', 96).'<mark>リリース</mark>', false);
+        $response->assertDontSee('</mark>…', false);
+    }
+
+    public function test_キーワードが窓より長くても強調が出る(): void
+    {
+        // T-6-11（screens.md 3-5。窓をキーワードの長さまで広げる）。広げないと
+        // 窓にキーワード全体が入らず、強調が 1 つも出ない
+        $長い語 = str_repeat('あ', 150);
+        $this->makeMessage($this->公開チャンネル, ['body' => '前置き'.$長い語.'後置き']);
+
+        $response = $this->search($this->作成者, ['q' => $長い語]);
+
+        $response->assertSee('の検索結果　1件', false);
+        $response->assertSee('<mark>'.$長い語.'</mark>', false);
+    }
+
+    public function test_半角カナで当たったときは先頭から強調なしで出す(): void
+    {
+        // T-6-11（screens.md 3-5）。半角カナは畳むと文字数が変わる（ｶﾞ → ガ）ので
+        // 位置を取れない。**0 件にはせず**、強調なしで先頭から出す
+        $this->makeMessage($this->公開チャンネル, ['body' => '9月リリースの日程を確定させたいです']);
+
+        $response = $this->search($this->作成者, ['q' => 'ﾘﾘｰｽ']);
+
+        $response->assertSee('の検索結果　1件', false);
+        $response->assertSee('<div class="t-body">9月リリースの日程を確定させたいです</div>', false);
+        $response->assertDontSee('<mark>', false);
+    }
+
     public function test_並びは新しい順で上から50件まで(): void
     {
         // T-6-12（Q-27 の想定 / screens.md 3-5）
@@ -293,6 +358,19 @@ class SearchTest extends TestCase
         $response->assertSee('の検索結果　1件', false);
         $response->assertSee('<mark>リリース</mark>', false);
         $response->assertSee('name="q" value="リリース"', false);
+    }
+
+    public function test_上部バーの検索窓は検索へ送るフォームになっている(): void
+    {
+        // T-6-13（screens.md 3-1）。**機能への唯一のUI経路**なので、action と
+        // name が変わったら落ちるようにしておく。ほかの 17 本は route('search')
+        // を直接叩くので、ここが壊れても気づけない
+        $response = $this->actingAs($this->作成者)->get(route('channels.index'));
+
+        $response->assertSee('<form class="search-input" method="GET" action="'.route('search').'"', false);
+        $response->assertSee('name="q" placeholder="メッセージを検索"', false);
+        // 上部バーには打った内容を残さない（screens.md 3-1）
+        $response->assertDontSee('name="q" value=', false);
     }
 
     public function test_記号を含むキーワードは文字として扱われる(): void

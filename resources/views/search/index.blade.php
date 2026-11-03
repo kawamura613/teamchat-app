@@ -19,7 +19,7 @@
     @php
         // 戻ってきた入力は文字列とは限らない（`q[]=x` のような細工）。文字列以外は
         // 空にして、戻った画面が落ちないようにする（screens.md 4-1 の「型が合わない値」）
-        $打ったキーワード = is_string($値 = old('q', $keyword ?? '')) ? $値 : '';
+        $打ったキーワード = is_string($値 = old('q', $keyword)) ? $値 : '';
     @endphp
     <div class="page">
         <h1 class="h-title">メッセージを検索</h1>
