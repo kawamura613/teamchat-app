@@ -39,6 +39,23 @@ class Channel extends Model
     }
 
     /**
+     * 公開チャンネル（permissions-api.md 1-6・2-3・3-2）。
+     *
+     * **公開API（F-21・F-22）の 2 本は、この 1 か所だけを通す。**
+     *
+     * visibleTo とは別の物差しであることに意味がある。visibleTo は利用者を
+     * 引数に取るが、**公開API は呼ぶ相手を判定に使わない**（permissions-api.md
+     * 1-3）ので、そもそも渡すものが無い。
+     *
+     * visibleTo の中身をこちらに寄せる（`$q->public()->orWhereHas(...)` にする）
+     * ことはしない。単位2〜6 が通る道なので、書き換えると回帰が出る。
+     */
+    public function scopePublic(Builder $query): void
+    {
+        $query->where('is_private', false);
+    }
+
+    /**
      * この人がこのチャンネルを見られるか（permissions-api.md 1-6）。
      *
      * **判定の中身は visibleTo スコープのままで、ここは薄い包み。**条件を書き写すと

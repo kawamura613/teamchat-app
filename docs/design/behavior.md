@@ -203,7 +203,7 @@ sequenceDiagram
 | 決まり | 内容 |
 |:--|:--|
 | **例外は投げて、1か所で受ける** | コントローラで `try`〜`catch` を並べません。`abort()` と例外を投げ、`app/Exceptions/Handler.php` で返し方を決めます |
-| **画面と公開APIで返し方を分ける** | 画面は「人が読む形」（リダイレクト・エラー文・エラー画面）、公開APIは「機械が読む形」（JSONの `message` 1本）。分かれ目は Laravel の `expectsJson()` と、`/api` で始まるかどうかで判断します |
+| **画面と公開APIで返し方を分ける** | 画面は「人が読む形」（リダイレクト・エラー文・エラー画面）、公開APIは「機械が読む形」（JSONの `message` 1本）。**分かれ目は URL が `api/*` かどうかの1点だけで、`expectsJson()` は見ません**（理由は 3-4。2026-11-03 に訂正） |
 | **隠すものは文言も揃える** | 「ない」と「見せられない」を**同じ文言・同じステータス**で返します（`permissions-api.md` 1-5・3-5） |
 | **中身を出さない** | 例外のクラス名・ファイル名・SQL・メッセージ本文を、画面にもJSONにも出しません（`APP_DEBUG=false` が前提） |
 | **検査はサーバ側で必ず行う** | 画面側の文字数表示は打ちやすさのための補助です（`screens.md` 4-1） |
@@ -272,8 +272,19 @@ sequenceDiagram
 |:--|:--|
 | `ModelNotFoundException` → 404 の文言に差し替え | Laravel の既定は `No query results for model [App\Models\Channel] 9` です。**モデルのクラス名が社外に漏れます** |
 | `NotFoundHttpException` → 404 の文言に差し替え | 既定は空の `message` です |
+| `MethodNotAllowedHttpException` → 405 の文言に差し替え | 既定は英語です（2026-11-03 に追加。実装済みでしたが表に行がありませんでした） |
 | `ThrottleRequestsException` → 429 の文言に差し替え | 既定は英語の `Too Many Attempts.` です |
 | `Throwable` → 500 の文言に差し替え | `APP_DEBUG=true` のままだと、例外の中身とスタックトレースがJSONで返ります |
+| **上の表に無い `HttpException` は、元のステータスを保つ** | 500 に畳むと、保守モード（`php artisan down`）の 503 が 500 になり、`Retry-After` も落ちます。文言は `permissions-api.md` 3-5 の最終行（2026-11-03 に追加） |
+| **例外が持つ応答ヘッダーをそのまま載せる** | 405 の `Allow`・429 の `Retry-After`・`X-RateLimit-*` が落ちると、ポータル側が再試行時期を決められません。405 の `Allow` は RFC 7231 6.5.5 が必須としています。Laravel 既定の `prepareJsonResponse` は `$e->getHeaders()` を渡しています（2026-11-03 に追加） |
+
+**JSONの符号化オプションの置き場**
+
+`JSON_UNESCAPED_UNICODE`（3-1 の「日本語をエスケープしない」）は **`App\Http\ApiJson::OPTIONS` の1か所**に置き、リソースのコレクション（`App\Http\Resources\ApiCollection`）と `Handler` の両方がそこを見ます。コレクション側は Laravel の `jsonOptions()` を上書きして渡すので、**符号化は1回だけ**走ります（`setEncodingOptions()` は組み立て済みの応答を復号して組み直すため、同じペイロードを3回なめます）。定数を例外層からコントローラーに取りに行かせないため、置き場はどちらでもない `App\Http` にしています（2026-11-03 に追加）。
+
+**どこで画面側と分けるか**
+
+**判定は「URL が `api`・`api/*` かどうか」で行います。`expectsJson()` では分けません。**`api/*` だけだと**前置きだけの `/api` に当たらず**、そこだけ画面側のHTMLが返ります（2026-11-03 に追記）。`acceptance.md` 2-7 は「**ブラウザのアドレス欄にURLを入れて、返ってきたJSONを目で見る**」と決めているので、公開APIにも `Accept: text/html` で来ます。`expectsJson()` で分けると、そのとき画面側のエラー画面（HTML）が返り、AC-7-3 の「存在しないIDを入れたときとまったく同じ404・同じ文言」を満たせません。`api/*` 以外は既定のまま通し、`resources/views/errors/*.blade.php` の振る舞いを変えません（2026-11-03 に追加）。
 
 ### 3-5. トランザクション
 

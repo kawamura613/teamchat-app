@@ -55,7 +55,7 @@ Tutorial 16「総仕上げ」のチームチャットアプリ。素の Laravel 
 
 - **認可の順番**: `MessagePolicy` の判定（本人か・削除済みでないか）より先に、必ず `ChannelPolicy@view` を通す（`permissions-api.md` 1-6）。
 - **404 と 403**: 見られないものは 404、見られたうえでの不可は 403。この順で判定する（`permissions-api.md` 1-5）。
-- **チャンネルの絞り込み**: `Channel` の `visibleTo` スコープだけを通す。自前の `where` を書かない（`permissions-api.md` 1-6）。
+- **チャンネルの絞り込み**: 画面は `Channel` の `visibleTo` スコープ、公開 API は `public` スコープ。**この 2 つ以外に自前の `where` を書かない**（`permissions-api.md` 1-6）。`visibleTo` は利用者を引数に取るので、呼ぶ相手を判定に使わない公開 API では使えない。
 - **削除済みのメッセージ**: 画面は `withTrashed()` で引き、検索と公開 API には書かない。出し分けはメッセージ 1 件ぶんの Blade 部品に閉じる。`SoftDeletes` の `deleting` で本文を触らない（`questions.md` 決定1 / `behavior.md` 3-6）。
 - **返信件数**: 画面は削除済みの親・子を含めて数える（`withCount` の既定では落ちる）。公開 API は含めない（`behavior.md` 1-4）。
 - **公開 API**: 返す列を許可リストで持つ。モデルをそのまま JSON にしない（`permissions-api.md` 3-4）。
