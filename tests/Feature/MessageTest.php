@@ -206,21 +206,35 @@ class MessageTest extends TestCase
     {
         // T-1-17（Q-36 の想定）。アバターを描く画面は単位4 以降なので、観点は
         // 単位1 の番号のままここで確かめる（acceptance.md 3-1 の T-1-17）
-        $一文字の人 = User::create(['name' => '佐', 'email' => 'sa@example.com', 'password' => 'password']);
-        $this->makeMessage($this->公開チャンネル, ['user_id' => $this->作成者->id]);
-        $this->makeMessage($this->公開チャンネル, ['user_id' => $this->見られる人->id]);
-        $this->makeMessage($this->公開チャンネル, ['user_id' => $一文字の人->id]);
+        //
+        // 色は ($user->id - 1) % 4 で決まる（partials/avatar.blade.php）。
+        // **id を固定して作る。**RefreshDatabase はトランザクションを巻き戻すだけで
+        // MySQL の AUTO_INCREMENT は戻らないので、id を採番に任せると、ほかの
+        // テストクラスの件数で出る色が変わってしまう（2026-11-03 に修正）
+        foreach ([1 => '一色 いちろう', 2 => '二色 じろう', 3 => '三色 さぶろう', 4 => '佐'] as $id => $名前) {
+            $user = new User;
+            $user->forceFill([
+                'id' => $id,
+                'name' => $名前,
+                'email' => "avatar{$id}@example.com",
+                'password' => 'password',
+            ]);
+            $user->save();
+            $this->makeMessage($this->公開チャンネル, ['user_id' => $id]);
+        }
 
         $response = $this->actingAs($this->作成者)->get(route('channels.show', $this->公開チャンネル));
 
-        // 先頭2文字。1文字の表示名は1文字だけ
-        $response->assertSee('>佐藤<', false);
-        $response->assertSee('>鈴木<', false);
+        // 先頭2文字。1文字の表示名（id 4 の「佐」）は1文字だけ
+        $response->assertSee('>一色<', false);
+        $response->assertSee('>二色<', false);
+        $response->assertSee('>三色<', false);
         $response->assertSee('>佐</span>', false);
 
         // 人ごとに固定の4色。id から機械的に割り当てる（既定・--b・--c・--d）
         $response->assertSee('class="avatar"', false);
         $response->assertSee('class="avatar avatar--b"', false);
+        $response->assertSee('class="avatar avatar--c"', false);
         $response->assertSee('class="avatar avatar--d"', false);
     }
 
